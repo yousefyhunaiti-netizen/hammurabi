@@ -17,6 +17,9 @@ type Lawyer = {
   bar_certificate_number: string
   phone: string
   email: string
+  working_days: string
+  working_hours_start: string
+  working_hours_end: string
 }
 
 type Specialty = {
@@ -31,6 +34,15 @@ type Review = {
   created_at: string
 }
 
+type Appointment = {
+  id: number
+  appointment_date: string
+  time_slot: string
+}
+
+const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+
 export default function LawyerDetailPage() {
   const params = useParams()
   const lawyerId = Number(params.id)
@@ -40,15 +52,19 @@ export default function LawyerDetailPage() {
   const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
 
+  const [availableDates, setAvailableDates] = useState<string[]>([])
+  const [selectedDate, setSelectedDate] = useState<string>('')
+  const [bookedSlots, setBookedSlots] = useState<string[]>([])
+  const [bookingMessage, setBookingMessage] = useState('')
+  const [bookingLoading, setBookingLoading] = useState(false)
+  const [myBookingId, setMyBookingId] = useState<number | null>(null)
+  const [mySlot, setMySlot] = useState<string>('')
+
   const supabase = createClient()
 
   useEffect(() => {
     async function loadData() {
-      const lawyerResult = await supabase
-        .from('lawyers')
-        .select('*')
-        .eq('id', lawyerId)
-        .single()
+      const lawyerResult = await supabase.from('lawyers').select('*').eq('id', lawyerId).single()
 
       if (lawyerResult.data) {
         setLawyer(lawyerResult.data)
@@ -60,6 +76,35 @@ export default function LawyerDetailPage() {
           .single()
 
         setSpecialty(specialtyResult.data)
+
+        const workingDaysList = lawyerResult.data.working_days.split(',').map(function (d: string) {
+          return Number(d)
+        })
+
+        const dates: string[] = []
+        const today = new Date()
+        let daysChecked = 0
+        let daysFound = 0
+
+        while (daysFound < 10 && daysChecked < 30) {
+          const checkDate = new Date(today)
+          checkDate.setDate(today.getDate() + daysChecked)
+          const dayOfWeek = checkDate.getDay()
+
+          if (workingDaysList.indexOf(dayOfWeek) !== -1) {
+            const yyyy = checkDate.getFullYear()
+            const mm = String(checkDate.getMonth() + 1).padStart(2, '0')
+            const dd = String(checkDate.getDate()).padStart(2, '0')
+            dates.push(yyyy + '-' + mm + '-' + dd)
+            daysFound = daysFound + 1
+          }
+          daysChecked = daysChecked + 1
+        }
+
+        setAvailableDates(dates)
+        if (dates.length > 0) {
+          setSelectedDate(dates[0])
+        }
       }
 
       const reviewsResult = await supabase
@@ -74,6 +119,105 @@ export default function LawyerDetailPage() {
 
     loadData()
   }, [lawyerId])
+
+  useEffect(() => {
+    async function loadBookedSlots() {
+      if (!selectedDate) return
+
+      const result = await supabase
+        .from('appointments')
+        .select('time_slot')
+        .eq('lawyer_id', lawyerId)
+        .eq('appointment_date', selectedDate)
+
+      const slots = (result.data || []).map(function (a: Appointment) {
+        return a.time_slot
+      })
+      setBookedSlots(slots)
+      setBookingMessage('')
+      setMyBookingId(null)
+    }
+
+    loadBookedSlots()
+  }, [selectedDate, lawyerId])
+
+  function getTimeSlots() {
+    if (!lawyer) return []
+    const startHour = Number(lawyer.working_hours_start.split(':')[0])
+    const endHour = Number(lawyer.working_hours_end.split(':')[0])
+    const slots: string[] = []
+    for (let h = startHour; h < endHour; h++) {
+      slots.push(String(h).padStart(2, '0') + ':00')
+    }
+    return slots
+  }
+
+  function parseDate(dateStr: string) {
+    const parts = dateStr.split('-')
+    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+  }
+
+  function formatDayButton(dateStr: string) {
+    const parts = dateStr.split('-')
+    const dateObj = parseDate(dateStr)
+    return dayNames[dateObj.getDay()] + ' ' + parts[2]
+  }
+
+  function formatFullHeader(dateStr: string) {
+    const parts = dateStr.split('-')
+    const dateObj = parseDate(dateStr)
+    return dayNames[dateObj.getDay()] + ' ' + parts[2] + ' ' + monthNames[dateObj.getMonth()] + ' ' + parts[0]
+  }
+
+  async function handleBookSlot(slot: string) {
+    setBookingMessage('')
+    setBookingLoading(true)
+
+    const userResult = await supabase.auth.getUser()
+
+    if (!userResult.data.user) {
+      setBookingLoading(false)
+      setBookingMessage('يرجى تسجيل الدخول أولاً لحجز موعد')
+      return
+    }
+
+    const insertResult = await supabase
+      .from('appointments')
+      .insert({
+        lawyer_id: lawyerId,
+        customer_id: userResult.data.user.id,
+        appointment_date: selectedDate,
+        time_slot: slot,
+        status: 'confirmed',
+      })
+      .select()
+      .single()
+
+    setBookingLoading(false)
+
+    if (insertResult.error) {
+      setBookingMessage('حدث خطأ أثناء الحجز، حاول مرة أخرى')
+      return
+    }
+
+    setBookingMessage('تم حجز موعدك بنجاح!')
+    setBookedSlots(bookedSlots.concat([slot]))
+    setMyBookingId(insertResult.data.id)
+    setMySlot(slot)
+  }
+
+  async function handleCancelBooking() {
+    if (!myBookingId) return
+    setBookingLoading(true)
+
+    await supabase.from('appointments').delete().eq('id', myBookingId)
+
+    setBookedSlots(bookedSlots.filter(function (s) { return s !== mySlot }))
+    setMyBookingId(null)
+    setMySlot('')
+    setBookingMessage('تم إلغاء الحجز')
+    setBookingLoading(false)
+  }
 
   if (loading) {
     return (
@@ -98,6 +242,8 @@ export default function LawyerDetailPage() {
   if (reviews.length > 0) {
     averageRating = averageRating / reviews.length
   }
+
+  const timeSlots = getTimeSlots()
 
   return (
     <div dir="rtl" className="min-h-screen bg-[#F3EEE4]">
@@ -175,14 +321,88 @@ export default function LawyerDetailPage() {
         <div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 sticky top-6">
             <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">رسوم الاستشارة</p>
-            <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-6">{lawyer.consultation_fee} د.أ</p>
+            <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-5">{lawyer.consultation_fee} د.أ</p>
 
-            <button className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition mb-3">
-              حجز موعد
-            </button>
-            <button className="w-full py-3 border border-[#1B1A17] text-[#1B1A17] rounded-md font-['Tajawal'] font-medium hover:bg-[#1B1A17] hover:text-[#F3EEE4] transition">
-              تواصل للاستشارة
-            </button>
+            <div className="mb-5">
+              <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-1">حجز موعد</h3>
+              <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-3">مناسب للقضايا التي تحتاج جلسة كاملة</p>
+
+              {selectedDate && (
+                <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-2">{formatFullHeader(selectedDate)}</p>
+              )}
+
+              <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+                {availableDates.map(function (date) {
+                  const isSelected = date === selectedDate
+                  return (
+                    <button
+                      key={date}
+                      onClick={function () { setSelectedDate(date) }}
+                      className={
+                        "flex-shrink-0 px-3 py-2 rounded-md font-['Tajawal'] text-xs whitespace-nowrap transition " +
+                        (isSelected
+                          ? 'bg-[#1B1A17] text-[#F3EEE4]'
+                          : 'bg-[#F3EEE4] text-[#4A473F] hover:bg-[#D8D2C4]')
+                      }
+                    >
+                      {formatDayButton(date)}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {timeSlots.map(function (slot) {
+                  const isBooked = bookedSlots.indexOf(slot) !== -1
+                  const isMine = slot === mySlot && myBookingId !== null
+                  return (
+                    <button
+                      key={slot}
+                      disabled={(isBooked && !isMine) || bookingLoading}
+                      onClick={function () {
+                        if (isMine) {
+                          handleCancelBooking()
+                        } else if (!isBooked) {
+                          handleBookSlot(slot)
+                        }
+                      }}
+                      className={
+                        "px-3 py-2 rounded-md font-['Tajawal'] text-sm transition " +
+                        (isMine
+                          ? 'bg-[#2F4538] text-white'
+                          : isBooked
+                          ? 'bg-[#E5E0D5] text-[#B0AA9C] cursor-not-allowed line-through'
+                          : 'bg-[#F3EEE4] text-[#1B1A17] hover:bg-[#AD8A4E] hover:text-white border border-[#D8D2C4]')
+                      }
+                    >
+                      {isMine ? slot + ' ✓' : slot}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {myBookingId && (
+                <button
+                  onClick={handleCancelBooking}
+                  disabled={bookingLoading}
+                  className="w-full py-2 mb-2 text-sm font-['Tajawal'] text-[#7A2E2E] hover:underline"
+                >
+                  إلغاء الحجز
+                </button>
+              )}
+
+              {bookingMessage && (
+                <p className="font-['Tajawal'] text-sm text-[#2F4538] mb-2">{bookingMessage}</p>
+              )}
+            </div>
+
+            <div className="pt-5 border-t border-[#D8D2C4]">
+              <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-1">استشارة سريعة</h3>
+              <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-3">للأسئلة البسيطة التي لا تحتاج جلسة كاملة</p>
+              <button className="w-full py-3 border border-[#1B1A17] text-[#1B1A17] rounded-md font-['Tajawal'] font-medium hover:bg-[#1B1A17] hover:text-[#F3EEE4] transition">
+                تواصل للاستشارة
+              </button>
+            </div>
           </div>
         </div>
       </div>
