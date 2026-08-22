@@ -13,6 +13,14 @@ type Lawyer = {
   photo_url: string | null
   specialty_id: number
   vacation_until: string | null
+  firm_id: number | null
+}
+
+type Firm = {
+  id: number
+  firm_name: string
+  bio: string | null
+  city: string | null
 }
 
 type Specialty = {
@@ -27,10 +35,12 @@ type Review = {
 
 export default function LawyersPage() {
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
+  const [firms, setFirms] = useState<Firm[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
   const [selectedSpecialty, setSelectedSpecialty] = useState<number | null>(null)
   const [selectedCity, setSelectedCity] = useState<string>('')
+  const [viewMode, setViewMode] = useState('individual')
   const [loading, setLoading] = useState(true)
 
   const supabase = createClient()
@@ -43,10 +53,17 @@ export default function LawyersPage() {
         .eq('is_approved', true)
         .eq('is_active', true)
 
+      const firmsResult = await supabase
+        .from('firms')
+        .select('*')
+        .eq('is_approved', true)
+        .eq('is_active', true)
+
       const specialtiesResult = await supabase.from('specialties').select('*')
       const reviewsResult = await supabase.from('reviews').select('lawyer_id, rating')
 
       setLawyers(lawyersResult.data || [])
+      setFirms(firmsResult.data || [])
       setSpecialties(specialtiesResult.data || [])
       setReviews(reviewsResult.data || [])
       setLoading(false)
@@ -55,9 +72,11 @@ export default function LawyersPage() {
     loadData()
   }, [])
 
-  const cities = Array.from(new Set(lawyers.map(function (l) { return l.city }))).filter(Boolean)
+  const individualLawyers = lawyers.filter(function (l) { return !l.firm_id })
 
-  const filteredLawyers = lawyers.filter(function (lawyer) {
+  const cities = Array.from(new Set(individualLawyers.map(function (l) { return l.city }))).filter(Boolean)
+
+  const filteredLawyers = individualLawyers.filter(function (lawyer) {
     const specialtyMatch = selectedSpecialty ? lawyer.specialty_id === selectedSpecialty : true
     const cityMatch = selectedCity ? lawyer.city === selectedCity : true
     return specialtyMatch && cityMatch
@@ -137,6 +156,35 @@ export default function LawyersPage() {
     )
   }
 
+  function renderFirmCard(firm: Firm) {
+    const profileLink = '/firms/' + firm.id
+
+    return (
+      <div key={firm.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 hover:shadow-lg transition">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-2xl">
+            {firm.firm_name.charAt(0)}
+          </div>
+          <div>
+            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{firm.firm_name}</h3>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">مكتب محاماة</p>
+          </div>
+        </div>
+
+        {firm.bio && (
+          <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4 line-clamp-2">{firm.bio}</p>
+        )}
+
+        <div className="flex justify-between items-center pt-4 border-t border-[#D8D2C4]">
+          <span className="font-['Tajawal'] text-sm text-[#4A473F]">{firm.city || ''}</span>
+          <a href={profileLink} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition">
+            عرض الملف
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
@@ -156,69 +204,88 @@ export default function LawyersPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex flex-col md:flex-row gap-4 mb-10">
-          <div className="relative">
-            <select
-              value={selectedSpecialty ?? ''}
-              onChange={function (e) { setSelectedSpecialty(e.target.value ? Number(e.target.value) : null) }}
-              className="w-full appearance-none px-4 py-3 pl-10 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
-            >
-              <option value="">كل التخصصات</option>
-              {specialties.map(function (s) {
-                return (
-                  <option key={s.id} value={s.id}>
-                    {s.name_ar}
-                  </option>
-                )
-              })}
-            </select>
-            <svg
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A473F]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </div>
-
-          <div className="relative">
-            <select
-              value={selectedCity}
-              onChange={function (e) { setSelectedCity(e.target.value) }}
-              className="w-full appearance-none px-4 py-3 pl-10 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
-            >
-              <option value="">كل المدن</option>
-              {cities.map(function (city) {
-                return (
-                  <option key={city} value={city}>
-                    {city}
-                  </option>
-                )
-              })}
-            </select>
-            <svg
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A473F]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </div>
+        <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 mb-6 w-fit">
+          <button
+            onClick={function () { setViewMode('individual') }}
+            className={
+              "px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " +
+              (viewMode === 'individual' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
+            }
+          >
+            محامون أفراد
+          </button>
+          <button
+            onClick={function () { setViewMode('firms') }}
+            className={
+              "px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " +
+              (viewMode === 'firms' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
+            }
+          >
+            مكاتب محاماة
+          </button>
         </div>
 
-        {loading && <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>}
+        {viewMode === 'individual' && (
+          <div>
+            <div className="flex flex-col md:flex-row gap-4 mb-10">
+              <div className="relative">
+                <select
+                  value={selectedSpecialty ?? ''}
+                  onChange={function (e) { setSelectedSpecialty(e.target.value ? Number(e.target.value) : null) }}
+                  className="w-full appearance-none px-4 py-3 pl-10 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
+                >
+                  <option value="">كل التخصصات</option>
+                  {specialties.map(function (s) {
+                    return <option key={s.id} value={s.id}>{s.name_ar}</option>
+                  })}
+                </select>
+                <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A473F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
 
-        {!loading && filteredLawyers.length === 0 && (
-          <p className="font-['Tajawal'] text-[#4A473F]">لا يوجد محامون مطابقون لهذا البحث حالياً</p>
+              <div className="relative">
+                <select
+                  value={selectedCity}
+                  onChange={function (e) { setSelectedCity(e.target.value) }}
+                  className="w-full appearance-none px-4 py-3 pl-10 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
+                >
+                  <option value="">كل المدن</option>
+                  {cities.map(function (city) {
+                    return <option key={city} value={city}>{city}</option>
+                  })}
+                </select>
+                <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A473F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
+            </div>
+
+            {loading && <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>}
+
+            {!loading && filteredLawyers.length === 0 && (
+              <p className="font-['Tajawal'] text-[#4A473F]">لا يوجد محامون مطابقون لهذا البحث حالياً</p>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredLawyers.map(renderLawyerCard)}
+            </div>
+          </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredLawyers.map(renderLawyerCard)}
-        </div>
+        {viewMode === 'firms' && (
+          <div>
+            {loading && <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>}
+
+            {!loading && firms.length === 0 && (
+              <p className="font-['Tajawal'] text-[#4A473F]">لا يوجد مكاتب محاماة مسجلة حالياً</p>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {firms.map(renderFirmCard)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
