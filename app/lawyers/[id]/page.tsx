@@ -60,9 +60,15 @@ export default function LawyerDetailPage() {
   const [myBookingId, setMyBookingId] = useState<number | null>(null)
   const [mySlot, setMySlot] = useState<string>('')
 
+  const [showConsultForm, setShowConsultForm] = useState(false)
+  const [questionText, setQuestionText] = useState('')
+  const [consultMessage, setConsultMessage] = useState('')
+  const [consultLoading, setConsultLoading] = useState(false)
+  const [consultSubmitted, setConsultSubmitted] = useState(false)
+
   const supabase = createClient()
 
-  useEffect(() => {
+  useEffect(function () {
     async function loadData() {
       const lawyerResult = await supabase.from('lawyers').select('*').eq('id', lawyerId).single()
 
@@ -120,7 +126,7 @@ export default function LawyerDetailPage() {
     loadData()
   }, [lawyerId])
 
-  useEffect(() => {
+  useEffect(function () {
     async function loadBookedSlots() {
       if (!selectedDate) return
 
@@ -219,9 +225,46 @@ export default function LawyerDetailPage() {
     setBookingLoading(false)
   }
 
+  async function handleSubmitConsultation() {
+    setConsultMessage('')
+
+    if (!questionText.trim()) {
+      setConsultMessage('يرجى كتابة سؤالك أولاً')
+      return
+    }
+
+    setConsultLoading(true)
+
+    const userResult = await supabase.auth.getUser()
+
+    if (!userResult.data.user) {
+      setConsultLoading(false)
+      setConsultMessage('يرجى تسجيل الدخول أولاً لإرسال استشارة')
+      return
+    }
+
+    const insertResult = await supabase.from('consultations').insert({
+      lawyer_id: lawyerId,
+      customer_id: userResult.data.user.id,
+      question: questionText,
+      status: 'pending',
+      fee: lawyer ? lawyer.consultation_fee : 0,
+    })
+
+    setConsultLoading(false)
+
+    if (insertResult.error) {
+      setConsultMessage('حدث خطأ أثناء الإرسال، حاول مرة أخرى')
+      return
+    }
+
+    setConsultSubmitted(true)
+    setQuestionText('')
+  }
+
   if (loading) {
     return (
-      <div dir="rtl" className="min-h-screen bg-[#F3EEE4] flex items-center justify-center">
+      <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
         <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
       </div>
     )
@@ -229,7 +272,7 @@ export default function LawyerDetailPage() {
 
   if (!lawyer) {
     return (
-      <div dir="rtl" className="min-h-screen bg-[#F3EEE4] flex items-center justify-center">
+      <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
         <p className="font-['Tajawal'] text-[#4A473F]">لم يتم العثور على هذا المحامي</p>
       </div>
     )
@@ -246,7 +289,7 @@ export default function LawyerDetailPage() {
   const timeSlots = getTimeSlots()
 
   return (
-    <div dir="rtl" className="min-h-screen bg-[#F3EEE4]">
+    <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-14 px-6">
         <div className="max-w-4xl mx-auto flex items-center gap-6">
           <div className="w-24 h-24 rounded-full bg-[#F3EEE4] flex items-center justify-center text-[#1B1A17] font-['Amiri'] text-4xl flex-shrink-0">
@@ -399,9 +442,45 @@ export default function LawyerDetailPage() {
             <div className="pt-5 border-t border-[#D8D2C4]">
               <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-1">استشارة سريعة</h3>
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-3">للأسئلة البسيطة التي لا تحتاج جلسة كاملة</p>
-              <button className="w-full py-3 border border-[#1B1A17] text-[#1B1A17] rounded-md font-['Tajawal'] font-medium hover:bg-[#1B1A17] hover:text-[#F3EEE4] transition">
-                تواصل للاستشارة
-              </button>
+
+              {!showConsultForm && !consultSubmitted && (
+                <button
+                  onClick={function () { setShowConsultForm(true) }}
+                  className="w-full py-3 border border-[#1B1A17] text-[#1B1A17] rounded-md font-['Tajawal'] font-medium hover:bg-[#1B1A17] hover:text-[#F3EEE4] transition"
+                >
+                  تواصل للاستشارة
+                </button>
+              )}
+
+              {showConsultForm && !consultSubmitted && (
+                <div>
+                  <textarea
+                    value={questionText}
+                    onChange={function (e) { setQuestionText(e.target.value) }}
+                    placeholder="اكتب سؤالك القانوني هنا..."
+                    rows={4}
+                    className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] mb-3"
+                  />
+                  <button
+                    onClick={handleSubmitConsultation}
+                    disabled={consultLoading}
+                    className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60"
+                  >
+                    {consultLoading ? 'جاري الإرسال...' : 'إرسال السؤال'}
+                  </button>
+                  {consultMessage && (
+                    <p className="font-['Tajawal'] text-sm text-[#7A2E2E] mt-2">{consultMessage}</p>
+                  )}
+                </div>
+              )}
+
+              {consultSubmitted && (
+                <div className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-4">
+                  <p className="font-['Tajawal'] text-sm text-[#2F4538]">
+                    تم إرسال سؤالك بنجاح! سيقوم المحامي بمراجعته والرد عليك قريباً. يمكنك متابعة حالة استشارتك من صفحة "استشاراتي".
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -34,7 +34,7 @@ export default function LawyersPage() {
 
   const supabase = createClient()
 
-  useEffect(() => {
+  useEffect(function () {
     async function loadData() {
       const lawyersResult = await supabase
         .from('lawyers')
@@ -80,7 +80,7 @@ export default function LawyersPage() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen bg-[#F3EEE4]">
+    <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-5xl mx-auto">
           <h1 className="font-['Amiri'] text-4xl md:text-5xl mb-3">دليل المحامين</h1>

@@ -43,7 +43,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="md:w-1/2 bg-[#F3EEE4] flex items-center justify-center px-6 py-16">
+      <div className="md:w-1/2 pattern-bg flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-sm">
           <h2 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-1">تسجيل الدخول</h2>
           <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-8">أدخل بياناتك للوصول إلى حسابك</p>
