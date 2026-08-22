@@ -16,10 +16,10 @@ export default function LoginPage() {
     setMessage('')
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const result = await supabase.auth.signInWithPassword({ email: email, password: password })
     setLoading(false)
 
-    if (error) {
+    if (result.error) {
       setMessage('خطأ: البريد الإلكتروني أو كلمة المرور غير صحيحة')
       return
     }
@@ -54,18 +54,21 @@ export default function LoginPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={function (e) { setEmail(e.target.value) }}
                 required
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
                 placeholder="you@example.com"
               />
             </div>
             <div>
-              <label className="block font-['Tajawal'] text-sm text-[#4A473F] mb-1.5">كلمة المرور</label>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block font-['Tajawal'] text-sm text-[#4A473F]">كلمة المرور</label>
+                <a href="/forgot-password" className="font-['Tajawal'] text-xs text-[#AD8A4E] hover:underline">نسيت كلمة المرور؟</a>
+              </div>
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={function (e) { setPassword(e.target.value) }}
                 required
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
                 placeholder="••••••••"
@@ -82,7 +85,7 @@ export default function LoginPage() {
           </form>
 
           {message && (
-            <p className={`mt-5 text-sm font-['Tajawal'] ${message.startsWith('خطأ') ? 'text-[#7A2E2E]' : 'text-[#2F4538]'}`}>
+            <p className={"mt-5 text-sm font-['Tajawal'] " + (message.indexOf('خطأ') === 0 ? 'text-[#7A2E2E]' : 'text-[#2F4538]')}>
               {message}
             </p>
           )}

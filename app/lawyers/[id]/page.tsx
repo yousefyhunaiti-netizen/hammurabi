@@ -37,9 +37,7 @@ type Review = {
   created_at: string
 }
 
-type Appointment = {
-  id: number
-  appointment_date: string
+type SlotRow = {
   time_slot: string
 }
 
@@ -151,7 +149,8 @@ export default function LawyerDetailPage() {
         .eq('lawyer_id', lawyerId)
         .eq('appointment_date', selectedDate)
 
-      const slots = (result.data || []).map(function (a: Appointment) {
+      const rows: SlotRow[] = result.data || []
+      const slots: string[] = rows.map(function (a) {
         return a.time_slot
       })
       setBookedSlots(slots)
