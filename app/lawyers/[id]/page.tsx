@@ -20,6 +20,9 @@ type Lawyer = {
   working_days: string
   working_hours_start: string
   working_hours_end: string
+  vacation_until: string | null
+  google_maps_link: string | null
+  website_url: string | null
 }
 
 type Specialty = {
@@ -75,6 +78,12 @@ export default function LawyerDetailPage() {
       if (lawyerResult.data) {
         setLawyer(lawyerResult.data)
 
+        const workingDaysList = lawyerResult.data.working_days.split(',').map(function (d: string) {
+          return Number(d)
+        })
+
+        const vacationUntil = lawyerResult.data.vacation_until
+
         const specialtyResult = await supabase
           .from('specialties')
           .select('*')
@@ -83,16 +92,12 @@ export default function LawyerDetailPage() {
 
         setSpecialty(specialtyResult.data)
 
-        const workingDaysList = lawyerResult.data.working_days.split(',').map(function (d: string) {
-          return Number(d)
-        })
-
         const dates: string[] = []
         const today = new Date()
         let daysChecked = 0
         let daysFound = 0
 
-        while (daysFound < 10 && daysChecked < 30) {
+        while (daysFound < 10 && daysChecked < 45) {
           const checkDate = new Date(today)
           checkDate.setDate(today.getDate() + daysChecked)
           const dayOfWeek = checkDate.getDay()
@@ -108,9 +113,19 @@ export default function LawyerDetailPage() {
         }
 
         setAvailableDates(dates)
-        if (dates.length > 0) {
-          setSelectedDate(dates[0])
+
+        let defaultDate = ''
+        for (let i = 0; i < dates.length; i++) {
+          const isVacationDate = vacationUntil ? dates[i] <= vacationUntil : false
+          if (!isVacationDate) {
+            defaultDate = dates[i]
+            break
+          }
         }
+        if (!defaultDate && dates.length > 0) {
+          defaultDate = dates[0]
+        }
+        setSelectedDate(defaultDate)
       }
 
       const reviewsResult = await supabase
@@ -173,6 +188,18 @@ export default function LawyerDetailPage() {
     const parts = dateStr.split('-')
     const dateObj = parseDate(dateStr)
     return dayNames[dateObj.getDay()] + ' ' + parts[2] + ' ' + monthNames[dateObj.getMonth()] + ' ' + parts[0]
+  }
+
+  function isOnVacation() {
+    if (!lawyer || !lawyer.vacation_until) return false
+    const today = new Date()
+    const vacationEnd = new Date(lawyer.vacation_until)
+    return vacationEnd >= today
+  }
+
+  function isDateBlocked(dateStr: string) {
+    if (!lawyer || !lawyer.vacation_until) return false
+    return dateStr <= lawyer.vacation_until
   }
 
   async function handleBookSlot(slot: string) {
@@ -287,6 +314,9 @@ export default function LawyerDetailPage() {
   }
 
   const timeSlots = getTimeSlots()
+  const onVacation = isOnVacation()
+  const phoneLink = 'tel:' + lawyer.phone
+  const selectedDateBlocked = isDateBlocked(selectedDate)
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
@@ -311,6 +341,14 @@ export default function LawyerDetailPage() {
         </div>
       </div>
 
+      {onVacation && (
+        <div className="max-w-4xl mx-auto px-6 pt-6">
+          <div className="bg-[#7A2E2E] text-white rounded-lg px-4 py-3 font-['Tajawal'] text-sm">
+            هذا المحامي في إجازة حتى {lawyer.vacation_until} — قد يتأخر الرد على الاستشارات، والمواعيد غير متاحة حتى هذا التاريخ
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-2">
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
@@ -320,7 +358,7 @@ export default function LawyerDetailPage() {
 
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
             <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-3">التفاصيل</h2>
-            <div className="grid grid-cols-2 gap-4 font-['Tajawal'] text-sm">
+            <div className="grid grid-cols-2 gap-4 font-['Tajawal'] text-sm mb-4">
               <div>
                 <p className="text-[#4A473F] mb-1">رقم النقابة</p>
                 <p className="text-[#1B1A17] font-medium">{lawyer.bar_certificate_number}</p>
@@ -337,6 +375,22 @@ export default function LawyerDetailPage() {
                 <p className="text-[#4A473F] mb-1">العنوان</p>
                 <p className="text-[#1B1A17] font-medium">{lawyer.address}</p>
               </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-4 border-t border-[#D8D2C4]">
+              <a href={phoneLink} className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">
+                📞 {lawyer.phone}
+              </a>
+              {lawyer.google_maps_link && (
+                <a href={lawyer.google_maps_link} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">
+                  📍 الموقع على الخريطة
+                </a>
+              )}
+              {lawyer.website_url && (
+                <a href={lawyer.website_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">
+                  🌐 الموقع الإلكتروني
+                </a>
+              )}
             </div>
           </div>
 
@@ -377,13 +431,17 @@ export default function LawyerDetailPage() {
               <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
                 {availableDates.map(function (date) {
                   const isSelected = date === selectedDate
+                  const isBlocked = isDateBlocked(date)
                   return (
                     <button
                       key={date}
-                      onClick={function () { setSelectedDate(date) }}
+                      disabled={isBlocked}
+                      onClick={function () { if (!isBlocked) { setSelectedDate(date) } }}
                       className={
                         "flex-shrink-0 px-3 py-2 rounded-md font-['Tajawal'] text-xs whitespace-nowrap transition " +
-                        (isSelected
+                        (isBlocked
+                          ? 'bg-[#E5E0D5] text-[#B0AA9C] line-through cursor-not-allowed'
+                          : isSelected
                           ? 'bg-[#1B1A17] text-[#F3EEE4]'
                           : 'bg-[#F3EEE4] text-[#4A473F] hover:bg-[#D8D2C4]')
                       }
@@ -394,35 +452,41 @@ export default function LawyerDetailPage() {
                 })}
               </div>
 
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {timeSlots.map(function (slot) {
-                  const isBooked = bookedSlots.indexOf(slot) !== -1
-                  const isMine = slot === mySlot && myBookingId !== null
-                  return (
-                    <button
-                      key={slot}
-                      disabled={(isBooked && !isMine) || bookingLoading}
-                      onClick={function () {
-                        if (isMine) {
-                          handleCancelBooking()
-                        } else if (!isBooked) {
-                          handleBookSlot(slot)
+              {selectedDateBlocked && (
+                <p className="font-['Tajawal'] text-sm text-[#7A2E2E] mb-3">المحامي في إجازة في هذا التاريخ</p>
+              )}
+
+              {!selectedDateBlocked && (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {timeSlots.map(function (slot) {
+                    const isBooked = bookedSlots.indexOf(slot) !== -1
+                    const isMine = slot === mySlot && myBookingId !== null
+                    return (
+                      <button
+                        key={slot}
+                        disabled={(isBooked && !isMine) || bookingLoading}
+                        onClick={function () {
+                          if (isMine) {
+                            handleCancelBooking()
+                          } else if (!isBooked) {
+                            handleBookSlot(slot)
+                          }
+                        }}
+                        className={
+                          "px-3 py-2 rounded-md font-['Tajawal'] text-sm transition " +
+                          (isMine
+                            ? 'bg-[#2F4538] text-white'
+                            : isBooked
+                            ? 'bg-[#E5E0D5] text-[#B0AA9C] cursor-not-allowed line-through'
+                            : 'bg-[#F3EEE4] text-[#1B1A17] hover:bg-[#AD8A4E] hover:text-white border border-[#D8D2C4]')
                         }
-                      }}
-                      className={
-                        "px-3 py-2 rounded-md font-['Tajawal'] text-sm transition " +
-                        (isMine
-                          ? 'bg-[#2F4538] text-white'
-                          : isBooked
-                          ? 'bg-[#E5E0D5] text-[#B0AA9C] cursor-not-allowed line-through'
-                          : 'bg-[#F3EEE4] text-[#1B1A17] hover:bg-[#AD8A4E] hover:text-white border border-[#D8D2C4]')
-                      }
-                    >
-                      {isMine ? slot + ' ✓' : slot}
-                    </button>
-                  )
-                })}
-              </div>
+                      >
+                        {isMine ? slot + ' ✓' : slot}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               {myBookingId && (
                 <button

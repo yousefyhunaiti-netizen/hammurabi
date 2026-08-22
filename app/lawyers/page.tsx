@@ -12,6 +12,7 @@ type Lawyer = {
   consultation_fee: number
   photo_url: string | null
   specialty_id: number
+  vacation_until: string | null
 }
 
 type Specialty = {
@@ -77,6 +78,63 @@ export default function LawyersPage() {
       sum = sum + lawyerReviews[i].rating
     }
     return { average: sum / lawyerReviews.length, count: lawyerReviews.length }
+  }
+
+  function isOnVacation(lawyer: Lawyer) {
+    if (!lawyer.vacation_until) return false
+    const today = new Date()
+    const vacationEnd = new Date(lawyer.vacation_until)
+    return vacationEnd >= today
+  }
+
+  function renderLawyerCard(lawyer: Lawyer) {
+    const ratingInfo = getRatingInfo(lawyer.id)
+    const profileLink = '/lawyers/' + lawyer.id
+    const onVacation = isOnVacation(lawyer)
+
+    return (
+      <div key={lawyer.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 hover:shadow-lg transition relative">
+        {onVacation && (
+          <div className="absolute top-3 left-3 bg-[#7A2E2E] text-white text-xs font-['Tajawal'] px-2 py-1 rounded-full">
+            في إجازة حتى {lawyer.vacation_until}
+          </div>
+        )}
+
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-2xl">
+            {lawyer.full_name.charAt(0)}
+          </div>
+          <div>
+            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{lawyer.full_name}</h3>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">{getSpecialtyName(lawyer.specialty_id)}</p>
+          </div>
+        </div>
+
+        {ratingInfo.count > 0 && (
+          <div className="flex items-center gap-1 mb-4">
+            <svg className="w-4 h-4 text-[#AD8A4E]" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+            </svg>
+            <span className="font-['Tajawal'] text-sm font-medium text-[#1B1A17]">{ratingInfo.average.toFixed(1)}</span>
+            <span className="font-['Tajawal'] text-sm text-[#4A473F]">({ratingInfo.count} تقييم)</span>
+          </div>
+        )}
+
+        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4 line-clamp-2">{lawyer.bio}</p>
+
+        <div className="flex justify-between items-center text-sm font-['Tajawal'] text-[#4A473F] mb-4">
+          <span>{lawyer.city}</span>
+          <span>{lawyer.years_experience} سنوات خبرة</span>
+        </div>
+
+        <div className="flex justify-between items-center pt-4 border-t border-[#D8D2C4]">
+          <span className="font-['Tajawal'] font-bold text-[#1B1A17]">{lawyer.consultation_fee} د.أ</span>
+          <a href={profileLink} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition">
+            عرض الملف
+          </a>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -151,50 +209,7 @@ export default function LawyersPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredLawyers.map(function (lawyer) {
-            const ratingInfo = getRatingInfo(lawyer.id)
-            const profileLink = "/lawyers/" + lawyer.id
-            return (
-              <div
-                key={lawyer.id}
-                className="bg-white border border-[#D8D2C4] rounded-lg p-6 hover:shadow-lg transition"
-              >
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-16 h-16 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-2xl">
-                    {lawyer.full_name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{lawyer.full_name}</h3>
-                    <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">{getSpecialtyName(lawyer.specialty_id)}</p>
-                  </div>
-                </div>
-
-                {ratingInfo.count > 0 && (
-                  <div className="flex items-center gap-1 mb-4">
-                    <svg className="w-4 h-4 text-[#AD8A4E]" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </svg>
-                    <span className="font-['Tajawal'] text-sm font-medium text-[#1B1A17]">{ratingInfo.average.toFixed(1)}</span>
-                    <span className="font-['Tajawal'] text-sm text-[#4A473F]">({ratingInfo.count} تقييم)</span>
-                  </div>
-                )}
-
-                <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4 line-clamp-2">{lawyer.bio}</p>
-
-                <div className="flex justify-between items-center text-sm font-['Tajawal'] text-[#4A473F] mb-4">
-                  <span>{lawyer.city}</span>
-                  <span>{lawyer.years_experience} سنوات خبرة</span>
-                </div>
-
-                <div className="flex justify-between items-center pt-4 border-t border-[#D8D2C4]">
-                  <span className="font-['Tajawal'] font-bold text-[#1B1A17]">{lawyer.consultation_fee} د.أ</span>
-                  <a href={profileLink} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition">
-                    عرض الملف
-                  </a>
-                </div>
-              </div>
-            )
-          })}
+          {filteredLawyers.map(renderLawyerCard)}
         </div>
       </div>
     </div>
