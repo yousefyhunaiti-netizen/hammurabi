@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 
 type Consultation = {
@@ -26,6 +27,7 @@ export default function MyConsultationsPage() {
   const [payingId, setPayingId] = useState<number | null>(null)
 
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(function () {
     async function loadData() {
@@ -66,6 +68,11 @@ export default function MyConsultationsPage() {
 
     loadData()
   }, [])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/')
+  }
 
   function getLawyerName(lawyerId: number) {
     const found = lawyers.find(function (l) { return l.id === lawyerId })
@@ -181,6 +188,14 @@ export default function MyConsultationsPage() {
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-3xl mx-auto">
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+            <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
+            <div className="flex gap-5 items-center">
+              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <button onClick={handleLogout} className="hover:text-[#AD8A4E] transition">تسجيل الخروج</button>
+            </div>
+          </div>
           <h1 className="font-['Amiri'] text-4xl mb-2">استشاراتي</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
         </div>
