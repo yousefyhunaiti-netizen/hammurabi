@@ -321,22 +321,33 @@ export default function LawyerDetailPage() {
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-14 px-6">
-        <div className="max-w-4xl mx-auto flex items-center gap-6">
-          <div className="w-24 h-24 rounded-full bg-[#F3EEE4] flex items-center justify-center text-[#1B1A17] font-['Amiri'] text-4xl flex-shrink-0">
-            {lawyer.full_name.charAt(0)}
+        <div className="max-w-4xl mx-auto">
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+            <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
+            <div className="flex gap-5">
+              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
+            </div>
           </div>
-          <div>
-            <h1 className="font-['Amiri'] text-3xl md:text-4xl mb-2">{lawyer.full_name}</h1>
-            <p className="font-['Tajawal'] text-[#AD8A4E] mb-2">{specialty ? specialty.name_ar : ''}</p>
-            {reviews.length > 0 && (
-              <div className="flex items-center gap-1">
-                <svg className="w-4 h-4 text-[#AD8A4E]" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                </svg>
-                <span className="font-['Tajawal'] text-sm">{averageRating.toFixed(1)}</span>
-                <span className="font-['Tajawal'] text-sm text-[#D8D2C4]">({reviews.length} تقييم)</span>
-              </div>
-            )}
+
+          <div className="flex items-center gap-6">
+            <div className="w-24 h-24 rounded-full bg-[#F3EEE4] flex items-center justify-center text-[#1B1A17] font-['Amiri'] text-4xl flex-shrink-0">
+              {lawyer.full_name.charAt(0)}
+            </div>
+            <div>
+              <h1 className="font-['Amiri'] text-3xl md:text-4xl mb-2">{lawyer.full_name}</h1>
+              <p className="font-['Tajawal'] text-[#AD8A4E] mb-2">{specialty ? specialty.name_ar : ''}</p>
+              {reviews.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <svg className="w-4 h-4 text-[#AD8A4E]" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                  <span className="font-['Tajawal'] text-sm">{averageRating.toFixed(1)}</span>
+                  <span className="font-['Tajawal'] text-sm text-[#D8D2C4]">({reviews.length} تقييم)</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

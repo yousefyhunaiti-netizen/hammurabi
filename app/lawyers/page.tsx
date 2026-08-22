@@ -141,6 +141,14 @@ export default function LawyersPage() {
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-5xl mx-auto">
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+            <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
+            <div className="flex gap-5">
+              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
+            </div>
+          </div>
           <h1 className="font-['Amiri'] text-4xl md:text-5xl mb-3">دليل المحامين</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E] mb-6"></div>
           <p className="font-['Tajawal'] text-[#D8D2C4]">ابحث عن محامٍ موثوق حسب التخصص والمدينة</p>
