@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
 
 type Firm = {
@@ -33,17 +33,24 @@ type FirmLawyer = {
 
 export default function FirmDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const firmId = Number(params.id)
 
   const [firm, setFirm] = useState<Firm | null>(null)
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [roster, setRoster] = useState<FirmLawyer[]>([])
   const [loading, setLoading] = useState(true)
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   const supabase = createClient()
 
   useEffect(function () {
     async function loadData() {
+      const userResult = await supabase.auth.getUser()
+      setLoggedIn(userResult.data.user ? true : false)
+      setCheckingAuth(false)
+
       const firmResult = await supabase.from('firms').select('*').eq('id', firmId).single()
       setFirm(firmResult.data)
 
@@ -61,6 +68,12 @@ export default function FirmDetailPage() {
 
     loadData()
   }, [firmId])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setLoggedIn(false)
+    router.push('/')
+  }
 
   function getSpecialtyName(specialtyId: number) {
     const found = specialties.find(function (s) { return s.id === specialtyId })
@@ -104,10 +117,15 @@ export default function FirmDetailPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
-            <div className="flex gap-5">
+            <div className="flex gap-5 items-center">
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
-              <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
+              {!checkingAuth && !loggedIn && (
+                <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
+              )}
+              {!checkingAuth && loggedIn && (
+                <button onClick={handleLogout} className="hover:text-[#AD8A4E] transition">تسجيل الخروج</button>
+              )}
             </div>
           </div>
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 
 type Lawyer = {
@@ -42,11 +43,18 @@ export default function LawyersPage() {
   const [selectedCity, setSelectedCity] = useState<string>('')
   const [viewMode, setViewMode] = useState('individual')
   const [loading, setLoading] = useState(true)
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(function () {
     async function loadData() {
+      const userResult = await supabase.auth.getUser()
+      setLoggedIn(userResult.data.user ? true : false)
+      setCheckingAuth(false)
+
       const lawyersResult = await supabase
         .from('lawyers')
         .select('*')
@@ -71,6 +79,12 @@ export default function LawyersPage() {
 
     loadData()
   }, [])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setLoggedIn(false)
+    router.push('/')
+  }
 
   const individualLawyers = lawyers.filter(function (l) { return !l.firm_id })
 
@@ -191,10 +205,15 @@ export default function LawyersPage() {
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
-            <div className="flex gap-5">
+            <div className="flex gap-5 items-center">
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
-              <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
+              {!checkingAuth && !loggedIn && (
+                <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
+              )}
+              {!checkingAuth && loggedIn && (
+                <button onClick={handleLogout} className="hover:text-[#AD8A4E] transition">تسجيل الخروج</button>
+              )}
             </div>
           </div>
           <h1 className="font-['Amiri'] text-4xl md:text-5xl mb-3">دليل المحامين</h1>

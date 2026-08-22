@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from './lib/supabase'
 
 type Lawyer = {
@@ -19,11 +20,18 @@ type Specialty = {
 export default function HomePage() {
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(function () {
     async function loadPreview() {
+      const userResult = await supabase.auth.getUser()
+      setLoggedIn(userResult.data.user ? true : false)
+      setCheckingAuth(false)
+
       const lawyersResult = await supabase
         .from('lawyers')
         .select('id, full_name, city, consultation_fee, specialty_id')
@@ -45,8 +53,16 @@ export default function HomePage() {
     return found ? found.name_ar : ''
   }
 
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setLoggedIn(false)
+    router.push('/')
+  }
+
+  const navLinkClass = "font-['Tajawal'] text-sm hover:text-[#AD8A4E] transition"
   const navLoginClass = "px-5 py-2 font-['Tajawal'] text-sm border border-[#F3EEE4] rounded-md hover:bg-[#F3EEE4] hover:text-[#1B1A17] transition"
   const navSignupClass = "px-5 py-2 font-['Tajawal'] text-sm bg-[#AD8A4E] rounded-md hover:bg-[#c49b58] transition"
+  const navLogoutClass = "px-5 py-2 font-['Tajawal'] text-sm border border-[#F3EEE4] rounded-md hover:bg-[#F3EEE4] hover:text-[#1B1A17] transition"
   const heroCtaClass = "inline-block px-8 py-4 bg-[#AD8A4E] text-white font-['Tajawal'] font-medium rounded-md hover:bg-[#c49b58] transition"
   const cardClass = "bg-white border border-[#D8D2C4] rounded-lg p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 block opacity-0"
   const viewAllClass = "inline-block px-6 py-3 border border-[#1B1A17] text-[#1B1A17] font-['Tajawal'] rounded-md hover:bg-[#1B1A17] hover:text-[#F3EEE4] transition"
@@ -79,11 +95,25 @@ export default function HomePage() {
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4]">
         <div className="max-w-6xl mx-auto px-6 py-5 flex justify-between items-center">
-          <h1 className="font-['Amiri'] text-2xl">حمورابي</h1>
-          <div className="flex gap-3">
-            <a href="/login" className={navLoginClass}>تسجيل الدخول</a>
-            <a href="/signup" className={navSignupClass}>إنشاء حساب</a>
+          <a href="/" className="font-['Amiri'] text-2xl">حمورابي</a>
+
+          <div className="hidden md:flex gap-6">
+            <a href="/lawyers" className={navLinkClass}>دليل المحامين</a>
+            <a href="/my-consultations" className={navLinkClass}>استشاراتي</a>
           </div>
+
+          {!checkingAuth && !loggedIn && (
+            <div className="flex gap-3">
+              <a href="/login" className={navLoginClass}>تسجيل الدخول</a>
+              <a href="/signup" className={navSignupClass}>إنشاء حساب</a>
+            </div>
+          )}
+
+          {!checkingAuth && loggedIn && (
+            <div className="flex gap-3">
+              <button onClick={handleLogout} className={navLogoutClass}>تسجيل الخروج</button>
+            </div>
+          )}
         </div>
 
         <div className="relative max-w-6xl mx-auto px-6 py-20 md:py-28 text-center overflow-hidden">

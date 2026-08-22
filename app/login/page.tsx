@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 
 export default function LoginPage() {
@@ -10,6 +11,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const supabase = createClient()
+  const router = useRouter()
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -25,6 +27,7 @@ export default function LoginPage() {
     }
 
     setMessage('تم تسجيل الدخول بنجاح')
+    router.push('/')
   }
 
   return (
