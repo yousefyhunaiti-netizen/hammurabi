@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createClient } from '../lib/supabase'
 
 export default function SignupPage() {
-  const [userType, setUserType] = useState<'customer' | 'lawyer'>('customer')
+  const [userType, setUserType] = useState('customer')
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -19,15 +19,15 @@ export default function SignupPage() {
     setMessage('')
     setLoading(true)
 
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const signUpResult = await supabase.auth.signUp({ email: email, password: password })
 
-    if (error) {
+    if (signUpResult.error) {
       setLoading(false)
-      setMessage('خطأ: ' + error.message)
+      setMessage('خطأ: ' + signUpResult.error.message)
       return
     }
 
-    const userId = data.user?.id
+    const userId = signUpResult.data.user ? signUpResult.data.user.id : null
 
     if (userType === 'customer') {
       await supabase.from('customers').insert({
@@ -36,10 +36,19 @@ export default function SignupPage() {
         email: email,
         phone: phone,
       })
-    } else {
+    } else if (userType === 'lawyer') {
       await supabase.from('lawyers').insert({
         user_id: userId,
         full_name: fullName,
+        email: email,
+        phone: phone,
+        is_approved: false,
+        is_active: false,
+      })
+    } else if (userType === 'firm') {
+      await supabase.from('firms').insert({
+        user_id: userId,
+        firm_name: fullName,
         email: email,
         phone: phone,
         is_approved: false,
@@ -49,6 +58,11 @@ export default function SignupPage() {
 
     setLoading(false)
     setMessage('تم إنشاء الحساب بنجاح! تفقد بريدك الإلكتروني للتأكيد.')
+  }
+
+  function nameFieldLabel() {
+    if (userType === 'firm') return 'اسم المكتب'
+    return 'الاسم الكامل'
   }
 
   return (
@@ -62,7 +76,7 @@ export default function SignupPage() {
           <h1 className="font-['Amiri'] text-6xl md:text-7xl leading-none mb-4">حمورابي</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E] mb-6"></div>
           <p className="font-['Tajawal'] text-lg text-[#D8D2C4] leading-relaxed">
-            انضم إلى منصة حمورابي، سواء كنت تبحث عن استشارة قانونية موثوقة أو محامياً يوسّع نطاق عمله.
+            انضم إلى منصة حمورابي، سواء كنت تبحث عن استشارة قانونية موثوقة، محامياً فردياً، أو مكتب محاماة.
           </p>
         </div>
       </div>
@@ -75,31 +89,43 @@ export default function SignupPage() {
           <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 mb-6">
             <button
               type="button"
-              onClick={() => setUserType('customer')}
-              className={`flex-1 py-2 rounded font-['Tajawal'] text-sm font-medium transition ${
-                userType === 'customer' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]'
-              }`}
+              onClick={function () { setUserType('customer') }}
+              className={
+                "flex-1 py-2 rounded font-['Tajawal'] text-xs font-medium transition " +
+                (userType === 'customer' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
+              }
             >
               عميل
             </button>
             <button
               type="button"
-              onClick={() => setUserType('lawyer')}
-              className={`flex-1 py-2 rounded font-['Tajawal'] text-sm font-medium transition ${
-                userType === 'lawyer' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]'
-              }`}
+              onClick={function () { setUserType('lawyer') }}
+              className={
+                "flex-1 py-2 rounded font-['Tajawal'] text-xs font-medium transition " +
+                (userType === 'lawyer' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
+              }
             >
               محامي
+            </button>
+            <button
+              type="button"
+              onClick={function () { setUserType('firm') }}
+              className={
+                "flex-1 py-2 rounded font-['Tajawal'] text-xs font-medium transition " +
+                (userType === 'firm' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
+              }
+            >
+              مكتب محاماة
             </button>
           </div>
 
           <form onSubmit={handleSignup} className="space-y-4">
             <div>
-              <label className="block font-['Tajawal'] text-sm text-[#4A473F] mb-1.5">الاسم الكامل</label>
+              <label className="block font-['Tajawal'] text-sm text-[#4A473F] mb-1.5">{nameFieldLabel()}</label>
               <input
                 type="text"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={function (e) { setFullName(e.target.value) }}
                 required
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
               />
@@ -109,7 +135,7 @@ export default function SignupPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={function (e) { setEmail(e.target.value) }}
                 required
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
               />
@@ -119,7 +145,7 @@ export default function SignupPage() {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={function (e) { setPhone(e.target.value) }}
                 required
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
               />
@@ -129,7 +155,7 @@ export default function SignupPage() {
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={function (e) { setPassword(e.target.value) }}
                 required
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
               />
@@ -145,7 +171,7 @@ export default function SignupPage() {
           </form>
 
           {message && (
-            <p className={`mt-5 text-sm font-['Tajawal'] ${message.startsWith('خطأ') ? 'text-[#7A2E2E]' : 'text-[#2F4538]'}`}>
+            <p className={"mt-5 text-sm font-['Tajawal'] " + (message.indexOf('خطأ') === 0 ? 'text-[#7A2E2E]' : 'text-[#2F4538]')}>
               {message}
             </p>
           )}
