@@ -22,6 +22,8 @@ export default function HomePage() {
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [loggedIn, setLoggedIn] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [infoLink, setInfoLink] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const supabase = createClient()
   const router = useRouter()
@@ -29,7 +31,27 @@ export default function HomePage() {
   useEffect(function () {
     async function loadPreview() {
       const userResult = await supabase.auth.getUser()
-      setLoggedIn(userResult.data.user ? true : false)
+      const user = userResult.data.user
+
+      if (user) {
+        setLoggedIn(true)
+
+        const customerResult = await supabase.from('customers').select('id').eq('user_id', user.id).maybeSingle()
+        if (customerResult.data) {
+          setInfoLink('/my-info')
+        } else {
+          const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+          if (lawyerResult.data) {
+            setInfoLink('/lawyer-info')
+          } else {
+            const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+            if (firmResult.data) {
+              setInfoLink('/firm-info')
+            }
+          }
+        }
+      }
+
       setCheckingAuth(false)
 
       const lawyersResult = await supabase
@@ -56,13 +78,13 @@ export default function HomePage() {
   async function handleLogout() {
     await supabase.auth.signOut()
     setLoggedIn(false)
+    setMenuOpen(false)
     router.push('/')
   }
 
   const navLinkClass = "font-['Tajawal'] text-sm hover:text-[#AD8A4E] transition"
   const navLoginClass = "px-5 py-2 font-['Tajawal'] text-sm border border-[#F3EEE4] rounded-md hover:bg-[#F3EEE4] hover:text-[#1B1A17] transition"
   const navSignupClass = "px-5 py-2 font-['Tajawal'] text-sm bg-[#AD8A4E] rounded-md hover:bg-[#c49b58] transition"
-  const navLogoutClass = "px-5 py-2 font-['Tajawal'] text-sm border border-[#F3EEE4] rounded-md hover:bg-[#F3EEE4] hover:text-[#1B1A17] transition"
   const heroCtaClass = "inline-block px-8 py-4 bg-[#AD8A4E] text-white font-['Tajawal'] font-medium rounded-md hover:bg-[#c49b58] transition"
   const cardClass = "bg-white border border-[#D8D2C4] rounded-lg p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 block opacity-0"
   const viewAllClass = "inline-block px-6 py-3 border border-[#1B1A17] text-[#1B1A17] font-['Tajawal'] rounded-md hover:bg-[#1B1A17] hover:text-[#F3EEE4] transition"
@@ -91,6 +113,10 @@ export default function HomePage() {
     )
   }
 
+  function toggleMenu() {
+    setMenuOpen(!menuOpen)
+  }
+
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4]">
@@ -110,8 +136,31 @@ export default function HomePage() {
           )}
 
           {!checkingAuth && loggedIn && (
-            <div className="flex gap-3">
-              <button onClick={handleLogout} className={navLogoutClass}>تسجيل الخروج</button>
+            <div className="relative">
+              <button
+                onClick={toggleMenu}
+                className="w-10 h-10 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition"
+              >
+                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" />
+                </svg>
+              </button>
+
+              {menuOpen && (
+                <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
+                  {infoLink && (
+                    <a href={infoLink} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">
+                      معلوماتي الشخصية
+                    </a>
+                  )}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]"
+                  >
+                    تسجيل الخروج
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
