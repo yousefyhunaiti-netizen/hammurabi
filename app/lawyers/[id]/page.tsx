@@ -65,6 +65,8 @@ export default function LawyerDetailPage() {
   const [bookingLoading, setBookingLoading] = useState(false)
   const [myBookingId, setMyBookingId] = useState<number | null>(null)
   const [mySlot, setMySlot] = useState<string>('')
+  const [myMeetingLink, setMyMeetingLink] = useState('')
+  const [consultationType, setConsultationType] = useState('in_person')
 
   const [showConsultForm, setShowConsultForm] = useState(false)
   const [questionText, setQuestionText] = useState('')
@@ -185,6 +187,7 @@ export default function LawyerDetailPage() {
       setBookedSlots(slots)
       setBookingMessage('')
       setMyBookingId(null)
+      setMyMeetingLink('')
     }
 
     loadBookedSlots()
@@ -253,6 +256,12 @@ export default function LawyerDetailPage() {
       return
     }
 
+    let generatedLink = ''
+    if (consultationType === 'video') {
+      const roomName = 'hammurabi-' + lawyerId + '-' + Date.now()
+      generatedLink = 'https://meet.jit.si/' + roomName
+    }
+
     const insertResult = await supabase
       .from('appointments')
       .insert({
@@ -261,6 +270,8 @@ export default function LawyerDetailPage() {
         appointment_date: selectedDate,
         time_slot: slot,
         status: 'confirmed',
+        consultation_type: consultationType,
+        meeting_link: generatedLink,
       })
       .select()
       .single()
@@ -276,6 +287,7 @@ export default function LawyerDetailPage() {
     setBookedSlots(bookedSlots.concat([slot]))
     setMyBookingId(insertResult.data.id)
     setMySlot(slot)
+    setMyMeetingLink(generatedLink)
   }
 
   async function handleCancelBooking() {
@@ -287,6 +299,7 @@ export default function LawyerDetailPage() {
     setBookedSlots(bookedSlots.filter(function (s) { return s !== mySlot }))
     setMyBookingId(null)
     setMySlot('')
+    setMyMeetingLink('')
     setBookingMessage('تم إلغاء الحجز')
     setBookingLoading(false)
   }
@@ -506,6 +519,29 @@ export default function LawyerDetailPage() {
               <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-1">حجز موعد</h3>
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-3">مناسب للقضايا التي تحتاج جلسة كاملة</p>
 
+              <div className="flex bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-1 mb-4">
+                <button
+                  type="button"
+                  onClick={function () { setConsultationType('in_person') }}
+                  className={
+                    "flex-1 py-2 rounded font-['Tajawal'] text-xs font-medium transition " +
+                    (consultationType === 'in_person' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
+                  }
+                >
+                  حضوري
+                </button>
+                <button
+                  type="button"
+                  onClick={function () { setConsultationType('video') }}
+                  className={
+                    "flex-1 py-2 rounded font-['Tajawal'] text-xs font-medium transition " +
+                    (consultationType === 'video' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
+                  }
+                >
+                  عبر الفيديو
+                </button>
+              </div>
+
               {selectedDate && (
                 <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-2">{formatFullHeader(selectedDate)}</p>
               )}
@@ -567,6 +603,15 @@ export default function LawyerDetailPage() {
                       </button>
                     )
                   })}
+                </div>
+              )}
+
+              {myBookingId && myMeetingLink && (
+                <div className="bg-[#2F4538] rounded-md p-3 mb-2">
+                  <p className="font-['Tajawal'] text-xs text-white mb-1">رابط الاجتماع:</p>
+                  <a href={myMeetingLink} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-xs text-white underline break-all">
+                    {myMeetingLink}
+                  </a>
                 </div>
               )}
 
