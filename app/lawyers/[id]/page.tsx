@@ -378,6 +378,7 @@ export default function LawyerDetailPage() {
             <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
             <div className="flex gap-5 items-center">
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
 
               {!checkingAuth && !loggedIn && (

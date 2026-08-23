@@ -125,6 +125,7 @@ export default function HomePage() {
 
           <div className="hidden md:flex gap-6">
             <a href="/lawyers" className={navLinkClass}>دليل المحامين</a>
+            <a href="/my-appointments" className={navLinkClass}>مواعيدي</a>
             <a href="/my-consultations" className={navLinkClass}>استشاراتي</a>
           </div>
 

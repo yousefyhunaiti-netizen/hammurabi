@@ -86,6 +86,7 @@ export default function MyInfoPage() {
             <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
             <div className="flex gap-5 items-center">
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
               <div className="relative">
                 <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
