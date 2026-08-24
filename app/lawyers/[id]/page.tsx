@@ -294,7 +294,7 @@ export default function LawyerDetailPage() {
     if (!myBookingId) return
     setBookingLoading(true)
 
-    await supabase.from('appointments').delete().eq('id', myBookingId)
+await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', myBookingId)
 
     setBookedSlots(bookedSlots.filter(function (s) { return s !== mySlot }))
     setMyBookingId(null)

@@ -110,7 +110,7 @@ export default function MyAppointmentsPage() {
 
   async function handleCancel(appointmentId: number) {
     setCancellingId(appointmentId)
-    await supabase.from('appointments').delete().eq('id', appointmentId)
+await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appointmentId)
     setAppointments(appointments.filter(function (a) { return a.id !== appointmentId }))
     setCancellingId(null)
   }
