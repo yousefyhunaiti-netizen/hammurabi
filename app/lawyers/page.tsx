@@ -17,6 +17,8 @@ type Lawyer = {
   photo_url: string | null
   vacation_until: string | null
   firm_id: number | null
+  is_featured: boolean | null
+  featured_until: string | null
 }
 
 type Firm = {
@@ -24,6 +26,8 @@ type Firm = {
   firm_name: string
   bio: string | null
   city: string | null
+  is_featured: boolean | null
+  featured_until: string | null
 }
 
 type Specialty = {
@@ -117,6 +121,13 @@ export default function LawyersPage() {
     setMenuOpen(!menuOpen)
   }
 
+  function isFeaturedActive(item: { is_featured: boolean | null; featured_until: string | null }) {
+    if (!item.is_featured || !item.featured_until) return false
+    const today = new Date()
+    const untilDate = new Date(item.featured_until)
+    return untilDate >= today
+  }
+
   function getLawyerSpecialtyIds(lawyer: Lawyer) {
     if (lawyer.specialty_ids) {
       return lawyer.specialty_ids.split(',').filter(Boolean).map(function (s) { return Number(s) })
@@ -139,12 +150,24 @@ export default function LawyersPage() {
 
   const individualLawyers = lawyers.filter(function (l) { return !l.firm_id })
 
-  const filteredLawyers = individualLawyers.filter(function (lawyer) {
-    const lawyerSpecIds = getLawyerSpecialtyIds(lawyer)
-    const lawyerCities = getLawyerCities(lawyer)
-    const specialtyMatch = selectedSpecialty ? lawyerSpecIds.indexOf(selectedSpecialty) !== -1 : true
-    const cityMatch = selectedCity ? lawyerCities.indexOf(selectedCity) !== -1 : true
-    return specialtyMatch && cityMatch
+  const filteredLawyers = individualLawyers
+    .filter(function (lawyer) {
+      const lawyerSpecIds = getLawyerSpecialtyIds(lawyer)
+      const lawyerCities = getLawyerCities(lawyer)
+      const specialtyMatch = selectedSpecialty ? lawyerSpecIds.indexOf(selectedSpecialty) !== -1 : true
+      const cityMatch = selectedCity ? lawyerCities.indexOf(selectedCity) !== -1 : true
+      return specialtyMatch && cityMatch
+    })
+    .sort(function (a, b) {
+      const aFeatured = isFeaturedActive(a) ? 1 : 0
+      const bFeatured = isFeaturedActive(b) ? 1 : 0
+      return bFeatured - aFeatured
+    })
+
+  const sortedFirms = firms.slice().sort(function (a, b) {
+    const aFeatured = isFeaturedActive(a) ? 1 : 0
+    const bFeatured = isFeaturedActive(b) ? 1 : 0
+    return bFeatured - aFeatured
   })
 
   function getSpecialtyNames(lawyer: Lawyer) {
@@ -184,9 +207,16 @@ export default function LawyersPage() {
     const ratingInfo = getRatingInfo(lawyer.id)
     const profileLink = '/lawyers/' + lawyer.id
     const onVacation = isOnVacation(lawyer)
+    const featured = isFeaturedActive(lawyer)
 
     return (
-      <div key={lawyer.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 hover:shadow-lg transition relative">
+      <div key={lawyer.id} className={"bg-white rounded-lg p-6 hover:shadow-lg transition relative " + (featured ? 'border-2 border-[#AD8A4E]' : 'border border-[#D8D2C4]')}>
+        {featured && (
+          <div className="absolute top-3 right-3 bg-[#AD8A4E] text-white text-xs font-['Tajawal'] px-2 py-1 rounded-full">
+            إعلان
+          </div>
+        )}
+
         {onVacation && (
           <div className="absolute top-3 left-3 bg-[#7A2E2E] text-white text-xs font-['Tajawal'] px-2 py-1 rounded-full">
             في إجازة حتى {lawyer.vacation_until}
@@ -232,9 +262,16 @@ export default function LawyersPage() {
 
   function renderFirmCard(firm: Firm) {
     const profileLink = '/firms/' + firm.id
+    const featured = isFeaturedActive(firm)
 
     return (
-      <div key={firm.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 hover:shadow-lg transition">
+      <div key={firm.id} className={"bg-white rounded-lg p-6 hover:shadow-lg transition relative " + (featured ? 'border-2 border-[#AD8A4E]' : 'border border-[#D8D2C4]')}>
+        {featured && (
+          <div className="absolute top-3 right-3 bg-[#AD8A4E] text-white text-xs font-['Tajawal'] px-2 py-1 rounded-full">
+            إعلان
+          </div>
+        )}
+
         <div className="flex items-center gap-4 mb-4">
           <div className="w-16 h-16 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-2xl">
             {firm.firm_name.charAt(0)}
@@ -384,12 +421,12 @@ export default function LawyersPage() {
           <div>
             {loading && <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>}
 
-            {!loading && firms.length === 0 && (
+            {!loading && sortedFirms.length === 0 && (
               <p className="font-['Tajawal'] text-[#4A473F]">لا يوجد مكاتب محاماة مسجلة حالياً</p>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {firms.map(renderFirmCard)}
+              {sortedFirms.map(renderFirmCard)}
             </div>
           </div>
         )}

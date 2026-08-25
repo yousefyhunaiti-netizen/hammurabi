@@ -8,6 +8,9 @@ type AccountInfo = {
   type: string
   isApproved: boolean
   currentTier: string | null
+  isFeatured: boolean
+  featuredUntil: string | null
+  specialtyId: number | null
 }
 
 const individualTiers = [
@@ -28,6 +31,8 @@ export default function SubscriptionPage() {
   const [notEligible, setNotEligible] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [message, setMessage] = useState('')
+  const [featuredLoading, setFeaturedLoading] = useState(false)
+  const [featuredMessage, setFeaturedMessage] = useState('')
 
   const supabase = createClient()
 
@@ -45,7 +50,7 @@ export default function SubscriptionPage() {
 
       const lawyerResult = await supabase
         .from('lawyers')
-        .select('id, is_approved, subscription_tier, firm_id')
+        .select('id, is_approved, subscription_tier, firm_id, is_featured, featured_until, specialty_id')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -55,6 +60,9 @@ export default function SubscriptionPage() {
           type: 'lawyer',
           isApproved: lawyerResult.data.is_approved === true,
           currentTier: lawyerResult.data.subscription_tier,
+          isFeatured: lawyerResult.data.is_featured === true,
+          featuredUntil: lawyerResult.data.featured_until,
+          specialtyId: lawyerResult.data.specialty_id,
         })
         setLoading(false)
         return
@@ -62,7 +70,7 @@ export default function SubscriptionPage() {
 
       const firmResult = await supabase
         .from('firms')
-        .select('id, is_approved, subscription_tier')
+        .select('id, is_approved, subscription_tier, is_featured, featured_until')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -72,6 +80,9 @@ export default function SubscriptionPage() {
           type: 'firm',
           isApproved: firmResult.data.is_approved === true,
           currentTier: firmResult.data.subscription_tier,
+          isFeatured: firmResult.data.is_featured === true,
+          featuredUntil: firmResult.data.featured_until,
+          specialtyId: null,
         })
         setLoading(false)
         return
@@ -130,6 +141,70 @@ export default function SubscriptionPage() {
     setSelecting(false)
     setMessage('تم تفعيل الاشتراك بنجاح!')
     setAccount(Object.assign({}, account, { currentTier: tierId }))
+  }
+
+  async function handleFeaturePurchase() {
+    if (!account) return
+    setFeaturedLoading(true)
+    setFeaturedMessage('')
+
+    const today = new Date()
+    const todayStr = today.toISOString().split('T')[0]
+
+    if (account.type === 'lawyer') {
+      const specId = account.specialtyId
+
+      const featuredResult = await supabase
+        .from('lawyers')
+        .select('id')
+        .eq('is_featured', true)
+        .eq('specialty_id', specId)
+        .gte('featured_until', todayStr)
+
+      const currentCount = featuredResult.data ? featuredResult.data.length : 0
+
+      if (currentCount >= 5) {
+        setFeaturedLoading(false)
+        setFeaturedMessage('عذراً، امتلأت جميع الأماكن المميزة لهذا التخصص حالياً')
+        return
+      }
+    } else {
+      const featuredFirmsResult = await supabase
+        .from('firms')
+        .select('id')
+        .eq('is_featured', true)
+        .gte('featured_until', todayStr)
+
+      const currentCount = featuredFirmsResult.data ? featuredFirmsResult.data.length : 0
+
+      if (currentCount >= 5) {
+        setFeaturedLoading(false)
+        setFeaturedMessage('عذراً، امتلأت جميع الأماكن المميزة حالياً')
+        return
+      }
+    }
+
+    const featuredUntilDate = new Date(today)
+    featuredUntilDate.setMonth(featuredUntilDate.getMonth() + 1)
+    const featuredUntilStr = featuredUntilDate.toISOString().split('T')[0]
+    const price = account.type === 'lawyer' ? 50 : 120
+    const tableName = account.type === 'lawyer' ? 'lawyers' : 'firms'
+
+    await supabase
+      .from(tableName)
+      .update({ is_featured: true, featured_until: featuredUntilStr })
+      .eq('id', account.id)
+
+    await supabase.from('payments').insert({
+      payment_type: 'featured_listing',
+      amount: price,
+      related_id: account.id,
+      status: 'completed',
+    })
+
+    setFeaturedLoading(false)
+    setFeaturedMessage('تم تفعيل الإعلان المميز بنجاح، ساري حتى ' + featuredUntilStr)
+    setAccount(Object.assign({}, account, { isFeatured: true, featuredUntil: featuredUntilStr }))
   }
 
   function renderTierCard(tier: { id: string; label: string; price: number; totalLabel: string }) {
@@ -192,6 +267,7 @@ export default function SubscriptionPage() {
   }
 
   const tiers = account.type === 'firm' ? firmTiers : individualTiers
+  const featuredPrice = account.type === 'lawyer' ? 50 : 120
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
@@ -208,8 +284,36 @@ export default function SubscriptionPage() {
         </div>
 
         {message && (
-          <p className="text-center font-['Tajawal'] text-sm text-[#2F4538]">{message}</p>
+          <p className="text-center font-['Tajawal'] text-sm text-[#2F4538] mb-10">{message}</p>
         )}
+
+        <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">إعلان مميز</h2>
+            <span className="px-3 py-1 bg-[#AD8A4E] text-white text-xs font-['Tajawal'] rounded-full">إعلان</span>
+          </div>
+          <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4">
+            اجعل ملفك من ضمن أول 5 نتائج مميزة في تخصصك لمدة شهر كامل مقابل {featuredPrice} د.أ
+          </p>
+
+          {account.isFeatured && (
+            <p className="font-['Tajawal'] text-sm text-[#2F4538] mb-3">
+              إعلانك المميز ساري حتى {account.featuredUntil}
+            </p>
+          )}
+
+          <button
+            onClick={handleFeaturePurchase}
+            disabled={featuredLoading}
+            className="w-full py-3 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] font-medium hover:bg-[#c49b58] transition disabled:opacity-60"
+          >
+            {featuredLoading ? 'جاري التفعيل...' : account.isFeatured ? 'تجديد لمدة شهر إضافي' : 'فعّل الإعلان المميز'}
+          </button>
+
+          {featuredMessage && (
+            <p className="mt-3 font-['Tajawal'] text-sm text-[#2F4538]">{featuredMessage}</p>
+          )}
+        </div>
       </div>
     </div>
   )
