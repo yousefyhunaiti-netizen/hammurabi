@@ -21,6 +21,20 @@ type Subscription = {
   started_at: string
 }
 
+type LawyerRow = {
+  id: number
+  full_name: string
+  is_comped: boolean | null
+  is_active: boolean | null
+}
+
+type FirmRow = {
+  id: number
+  firm_name: string
+  is_comped: boolean | null
+  is_active: boolean | null
+}
+
 const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
 
 export default function AdminDashboardPage() {
@@ -33,8 +47,20 @@ export default function AdminDashboardPage() {
   const [firmCount, setFirmCount] = useState(0)
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [allLawyers, setAllLawyers] = useState<LawyerRow[]>([])
+  const [allFirms, setAllFirms] = useState<FirmRow[]>([])
+  const [compedUpdating, setCompedUpdating] = useState<string | null>(null)
+  const [lawyerSearch, setLawyerSearch] = useState('')
+  const [firmSearch, setFirmSearch] = useState('')
 
   const supabase = createClient()
+
+  async function loadCompedLists() {
+    const lawyersResult = await supabase.from('lawyers').select('id, full_name, is_comped, is_active')
+    const firmsResult = await supabase.from('firms').select('id, firm_name, is_comped, is_active')
+    setAllLawyers(lawyersResult.data || [])
+    setAllFirms(firmsResult.data || [])
+  }
 
   useEffect(function () {
     async function loadData() {
@@ -70,6 +96,8 @@ export default function AdminDashboardPage() {
       setCustomerCount(customersCountResult.count || 0)
       setLawyerCount(lawyersCountResult.count || 0)
       setFirmCount(firmsCountResult.count || 0)
+
+      await loadCompedLists()
 
       setLoading(false)
     }
@@ -129,6 +157,84 @@ export default function AdminDashboardPage() {
     setSelectedYear(newYear)
   }
 
+  async function toggleLawyerComped(lawyer: LawyerRow) {
+    const key = 'lawyer-' + lawyer.id
+    setCompedUpdating(key)
+    const newValue = !lawyer.is_comped
+
+    await supabase
+      .from('lawyers')
+      .update({ is_comped: newValue, is_active: newValue ? true : lawyer.is_active })
+      .eq('id', lawyer.id)
+
+    await loadCompedLists()
+    setCompedUpdating(null)
+  }
+
+  async function toggleFirmComped(firm: FirmRow) {
+    const key = 'firm-' + firm.id
+    setCompedUpdating(key)
+    const newValue = !firm.is_comped
+
+    await supabase
+      .from('firms')
+      .update({ is_comped: newValue, is_active: newValue ? true : firm.is_active })
+      .eq('id', firm.id)
+
+    await loadCompedLists()
+    setCompedUpdating(null)
+  }
+
+  function renderLawyerCompedRow(lawyer: LawyerRow) {
+    const key = 'lawyer-' + lawyer.id
+    const isComped = lawyer.is_comped === true
+
+    function clickToggle() {
+      toggleLawyerComped(lawyer)
+    }
+
+    return (
+      <div key={key} className="flex justify-between items-center py-3 border-b border-[#D8D2C4] last:border-0">
+        <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{lawyer.full_name}</p>
+        <button
+          onClick={clickToggle}
+          disabled={compedUpdating === key}
+          className={
+            "px-4 py-2 rounded-md font-['Tajawal'] text-xs transition " +
+            (isComped ? 'bg-[#2F4538] text-white' : 'bg-[#F3EEE4] text-[#4A473F] border border-[#D8D2C4]')
+          }
+        >
+          {isComped ? 'حساب مجاني ✓' : 'منح حساب مجاني'}
+        </button>
+      </div>
+    )
+  }
+
+  function renderFirmCompedRow(firm: FirmRow) {
+    const key = 'firm-' + firm.id
+    const isComped = firm.is_comped === true
+
+    function clickToggle() {
+      toggleFirmComped(firm)
+    }
+
+    return (
+      <div key={key} className="flex justify-between items-center py-3 border-b border-[#D8D2C4] last:border-0">
+        <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{firm.firm_name}</p>
+        <button
+          onClick={clickToggle}
+          disabled={compedUpdating === key}
+          className={
+            "px-4 py-2 rounded-md font-['Tajawal'] text-xs transition " +
+            (isComped ? 'bg-[#2F4538] text-white' : 'bg-[#F3EEE4] text-[#4A473F] border border-[#D8D2C4]')
+          }
+        >
+          {isComped ? 'حساب مجاني ✓' : 'منح حساب مجاني'}
+        </button>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
@@ -146,6 +252,16 @@ export default function AdminDashboardPage() {
       </div>
     )
   }
+
+  const filteredLawyersForSearch = allLawyers.filter(function (l) {
+    if (!lawyerSearch.trim()) return true
+    return l.full_name.toLowerCase().indexOf(lawyerSearch.toLowerCase()) !== -1
+  })
+
+  const filteredFirmsForSearch = allFirms.filter(function (f) {
+    if (!firmSearch.trim()) return true
+    return f.firm_name.toLowerCase().indexOf(firmSearch.toLowerCase()) !== -1
+  })
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
@@ -197,7 +313,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
+        <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-8">
           <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">الإيرادات اليومية</h2>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer>
@@ -209,6 +325,36 @@ export default function AdminDashboardPage() {
                 <Bar dataKey="revenue" fill="#AD8A4E" />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
+            <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">حسابات مجانية - محامون</h2>
+            <input
+              type="text"
+              value={lawyerSearch}
+              onChange={function (e) { setLawyerSearch(e.target.value) }}
+              placeholder="ابحث عن اسم محامٍ..."
+              className="w-full px-3 py-2 mb-4 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+            />
+            <div className="max-h-96 overflow-y-auto">
+              {filteredLawyersForSearch.map(renderLawyerCompedRow)}
+            </div>
+          </div>
+
+          <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
+            <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">حسابات مجانية - مكاتب</h2>
+            <input
+              type="text"
+              value={firmSearch}
+              onChange={function (e) { setFirmSearch(e.target.value) }}
+              placeholder="ابحث عن اسم مكتب..."
+              className="w-full px-3 py-2 mb-4 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+            />
+            <div className="max-h-96 overflow-y-auto">
+              {filteredFirmsForSearch.map(renderFirmCompedRow)}
+            </div>
           </div>
         </div>
       </div>

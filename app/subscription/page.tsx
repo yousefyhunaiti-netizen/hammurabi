@@ -11,6 +11,7 @@ type AccountInfo = {
   isFeatured: boolean
   featuredUntil: string | null
   specialtyId: number | null
+  isComped: boolean
 }
 
 const individualTiers = [
@@ -50,7 +51,7 @@ export default function SubscriptionPage() {
 
       const lawyerResult = await supabase
         .from('lawyers')
-        .select('id, is_approved, subscription_tier, firm_id, is_featured, featured_until, specialty_id')
+        .select('id, is_approved, subscription_tier, firm_id, is_featured, featured_until, specialty_id, is_comped')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -63,6 +64,7 @@ export default function SubscriptionPage() {
           isFeatured: lawyerResult.data.is_featured === true,
           featuredUntil: lawyerResult.data.featured_until,
           specialtyId: lawyerResult.data.specialty_id,
+          isComped: lawyerResult.data.is_comped === true,
         })
         setLoading(false)
         return
@@ -70,7 +72,7 @@ export default function SubscriptionPage() {
 
       const firmResult = await supabase
         .from('firms')
-        .select('id, is_approved, subscription_tier, is_featured, featured_until')
+        .select('id, is_approved, subscription_tier, is_featured, featured_until, is_comped')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -83,6 +85,7 @@ export default function SubscriptionPage() {
           isFeatured: firmResult.data.is_featured === true,
           featuredUntil: firmResult.data.featured_until,
           specialtyId: null,
+          isComped: firmResult.data.is_comped === true,
         })
         setLoading(false)
         return
@@ -246,6 +249,21 @@ export default function SubscriptionPage() {
         <div className="text-center">
           <p className="font-['Tajawal'] text-[#4A473F] mb-4">هذه الصفحة مخصصة لحسابات المحامين والمكاتب فقط</p>
           <a href="/login" className="inline-block px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">تسجيل الدخول</a>
+        </div>
+      </div>
+    )
+  }
+
+  if (account.isComped) {
+    return (
+      <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
+        <div className="text-center max-w-md">
+          <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
+            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">حساب مجاني</h1>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed">
+              تم منحك حساباً مجانياً من إدارة حمورابي، ملفك ظاهر ونشط على المنصة بدون رسوم اشتراك.
+            </p>
+          </div>
         </div>
       </div>
     )
