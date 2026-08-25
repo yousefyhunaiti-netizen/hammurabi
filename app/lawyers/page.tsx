@@ -54,6 +54,7 @@ export default function LawyersPage() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [infoLink, setInfoLink] = useState('')
+  const [isLawyerAccount, setIsLawyerAccount] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const supabase = createClient()
@@ -74,6 +75,7 @@ export default function LawyersPage() {
           const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setInfoLink('/lawyer-info')
+            setIsLawyerAccount(true)
           } else {
             const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) {
@@ -306,6 +308,9 @@ export default function LawyersPage() {
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              {isLawyerAccount && (
+                <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              )}
 
               {!checkingAuth && !loggedIn && (
                 <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>

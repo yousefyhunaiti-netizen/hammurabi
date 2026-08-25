@@ -127,6 +127,7 @@ export default function LawyerInfoPage() {
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
               <div className="relative">
                 <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                   <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">

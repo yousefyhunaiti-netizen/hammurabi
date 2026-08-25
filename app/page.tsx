@@ -23,6 +23,7 @@ export default function HomePage() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [infoLink, setInfoLink] = useState('')
+  const [isLawyerAccount, setIsLawyerAccount] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const supabase = createClient()
@@ -43,6 +44,7 @@ export default function HomePage() {
           const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setInfoLink('/lawyer-info')
+            setIsLawyerAccount(true)
           } else {
             const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) {
@@ -127,6 +129,9 @@ export default function HomePage() {
             <a href="/lawyers" className={navLinkClass}>دليل المحامين</a>
             <a href="/my-appointments" className={navLinkClass}>مواعيدي</a>
             <a href="/my-consultations" className={navLinkClass}>استشاراتي</a>
+            {isLawyerAccount && (
+              <a href="/lawyer-tools" className={navLinkClass}>أدواتي</a>
+            )}
           </div>
 
           {!checkingAuth && !loggedIn && (
