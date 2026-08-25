@@ -9,10 +9,12 @@ type Lawyer = {
   full_name: string
   bio: string
   city: string
+  cities: string | null
+  specialty_id: number
+  specialty_ids: string | null
   years_experience: number
   consultation_fee: number
   photo_url: string | null
-  specialty_id: number
   vacation_until: string | null
   firm_id: number | null
 }
@@ -33,6 +35,8 @@ type Review = {
   lawyer_id: number
   rating: number
 }
+
+const cityOptions = ['عمان', 'إربد', 'الزرقاء', 'البلقاء', 'المفرق', 'الكرك', 'جرش', 'عجلون', 'مادبا', 'العقبة', 'معان', 'الطفيلة']
 
 export default function LawyersPage() {
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
@@ -113,19 +117,48 @@ export default function LawyersPage() {
     setMenuOpen(!menuOpen)
   }
 
+  function getLawyerSpecialtyIds(lawyer: Lawyer) {
+    if (lawyer.specialty_ids) {
+      return lawyer.specialty_ids.split(',').filter(Boolean).map(function (s) { return Number(s) })
+    }
+    if (lawyer.specialty_id) {
+      return [lawyer.specialty_id]
+    }
+    return []
+  }
+
+  function getLawyerCities(lawyer: Lawyer) {
+    if (lawyer.cities) {
+      return lawyer.cities.split(',').filter(Boolean)
+    }
+    if (lawyer.city) {
+      return [lawyer.city]
+    }
+    return []
+  }
+
   const individualLawyers = lawyers.filter(function (l) { return !l.firm_id })
 
-  const cities = Array.from(new Set(individualLawyers.map(function (l) { return l.city }))).filter(Boolean)
-
   const filteredLawyers = individualLawyers.filter(function (lawyer) {
-    const specialtyMatch = selectedSpecialty ? lawyer.specialty_id === selectedSpecialty : true
-    const cityMatch = selectedCity ? lawyer.city === selectedCity : true
+    const lawyerSpecIds = getLawyerSpecialtyIds(lawyer)
+    const lawyerCities = getLawyerCities(lawyer)
+    const specialtyMatch = selectedSpecialty ? lawyerSpecIds.indexOf(selectedSpecialty) !== -1 : true
+    const cityMatch = selectedCity ? lawyerCities.indexOf(selectedCity) !== -1 : true
     return specialtyMatch && cityMatch
   })
 
-  function getSpecialtyName(specialtyId: number) {
-    const specialty = specialties.find(function (s) { return s.id === specialtyId })
-    return specialty ? specialty.name_ar : ''
+  function getSpecialtyNames(lawyer: Lawyer) {
+    const ids = getLawyerSpecialtyIds(lawyer)
+    const names = ids.map(function (id) {
+      const found = specialties.find(function (s) { return s.id === id })
+      return found ? found.name_ar : ''
+    })
+    return names.filter(Boolean).join('، ')
+  }
+
+  function getCitiesDisplay(lawyer: Lawyer) {
+    const cities = getLawyerCities(lawyer)
+    return cities.join('، ')
   }
 
   function getRatingInfo(lawyerId: number) {
@@ -166,7 +199,7 @@ export default function LawyersPage() {
           </div>
           <div>
             <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{lawyer.full_name}</h3>
-            <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">{getSpecialtyName(lawyer.specialty_id)}</p>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">{getSpecialtyNames(lawyer)}</p>
           </div>
         </div>
 
@@ -183,7 +216,7 @@ export default function LawyersPage() {
         <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4 line-clamp-2">{lawyer.bio}</p>
 
         <div className="flex justify-between items-center text-sm font-['Tajawal'] text-[#4A473F] mb-4">
-          <span>{lawyer.city}</span>
+          <span>{getCitiesDisplay(lawyer)}</span>
           <span>{lawyer.years_experience} سنوات خبرة</span>
         </div>
 
@@ -325,7 +358,7 @@ export default function LawyersPage() {
                   className="w-full appearance-none px-4 py-3 pl-10 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
                 >
                   <option value="">كل المدن</option>
-                  {cities.map(function (city) {
+                  {cityOptions.map(function (city) {
                     return <option key={city} value={city}>{city}</option>
                   })}
                 </select>

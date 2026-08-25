@@ -9,7 +9,9 @@ type Lawyer = {
   full_name: string
   bio: string | null
   specialty_id: number | null
+  specialty_ids: string | null
   city: string | null
+  cities: string | null
   address: string | null
   phone: string | null
   email: string | null
@@ -40,6 +42,8 @@ const dayOptions = [
   { value: 6, label: 'السبت' },
 ]
 
+const cityOptions = ['عمان', 'إربد', 'الزرقاء', 'البلقاء', 'المفرق', 'الكرك', 'جرش', 'عجلون', 'مادبا', 'العقبة', 'معان', 'الطفيلة']
+
 export default function LawyerDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [lawyer, setLawyer] = useState<Lawyer | null>(null)
@@ -49,8 +53,8 @@ export default function LawyerDashboardPage() {
 
   const [fullName, setFullName] = useState('')
   const [bio, setBio] = useState('')
-  const [specialtyId, setSpecialtyId] = useState('')
-  const [city, setCity] = useState('')
+  const [selectedSpecialties, setSelectedSpecialties] = useState<number[]>([])
+  const [selectedCities, setSelectedCities] = useState<string[]>([])
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [fee, setFee] = useState('')
@@ -102,8 +106,6 @@ export default function LawyerDashboardPage() {
 
       setFullName(l.full_name || '')
       setBio(l.bio || '')
-      setSpecialtyId(l.specialty_id ? String(l.specialty_id) : '')
-      setCity(l.city || '')
       setAddress(l.address || '')
       setPhone(l.phone || '')
       setFee(l.consultation_fee ? String(l.consultation_fee) : '')
@@ -118,6 +120,20 @@ export default function LawyerDashboardPage() {
       if (l.working_days) {
         const dayNumbers = l.working_days.split(',').map(function (d) { return Number(d) })
         setSelectedDays(dayNumbers)
+      }
+
+      if (l.specialty_ids) {
+        const specIds = l.specialty_ids.split(',').filter(Boolean).map(function (s) { return Number(s) })
+        setSelectedSpecialties(specIds)
+      } else if (l.specialty_id) {
+        setSelectedSpecialties([l.specialty_id])
+      }
+
+      if (l.cities) {
+        const cityList = l.cities.split(',').filter(Boolean)
+        setSelectedCities(cityList)
+      } else if (l.city) {
+        setSelectedCities([l.city])
       }
 
       const specialtiesResult = await supabase.from('specialties').select('*')
@@ -137,6 +153,22 @@ export default function LawyerDashboardPage() {
     }
   }
 
+  function toggleSpecialty(specId: number) {
+    if (selectedSpecialties.indexOf(specId) !== -1) {
+      setSelectedSpecialties(selectedSpecialties.filter(function (s) { return s !== specId }))
+    } else {
+      setSelectedSpecialties(selectedSpecialties.concat([specId]))
+    }
+  }
+
+  function toggleCity(cityName: string) {
+    if (selectedCities.indexOf(cityName) !== -1) {
+      setSelectedCities(selectedCities.filter(function (c) { return c !== cityName }))
+    } else {
+      setSelectedCities(selectedCities.concat([cityName]))
+    }
+  }
+
   async function handleSave() {
     if (!lawyer) return
     setSaveMessage('')
@@ -144,14 +176,20 @@ export default function LawyerDashboardPage() {
 
     const sortedDays = selectedDays.slice().sort()
     const workingDaysString = sortedDays.join(',')
+    const specialtyIdsString = selectedSpecialties.join(',')
+    const citiesString = selectedCities.join(',')
+    const primarySpecialty = selectedSpecialties.length > 0 ? selectedSpecialties[0] : null
+    const primaryCity = selectedCities.length > 0 ? selectedCities[0] : ''
 
     const updateResult = await supabase
       .from('lawyers')
       .update({
         full_name: fullName,
         bio: bio,
-        specialty_id: specialtyId ? Number(specialtyId) : null,
-        city: city,
+        specialty_id: primarySpecialty,
+        specialty_ids: specialtyIdsString,
+        city: primaryCity,
+        cities: citiesString,
         address: address,
         phone: phone,
         consultation_fee: fee ? Number(fee) : 0,
@@ -244,38 +282,57 @@ export default function LawyerDashboardPage() {
             </div>
 
             <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">التخصص</label>
-              <select
-                value={specialtyId}
-                onChange={function (e) { setSpecialtyId(e.target.value) }}
-                className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
-              >
-                <option value="">اختر التخصص</option>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-2">التخصصات (يمكن اختيار أكثر من واحد)</label>
+              <div className="flex flex-wrap gap-2">
                 {specialties.map(function (s) {
-                  return <option key={s.id} value={s.id}>{s.name_ar}</option>
+                  const isSelected = selectedSpecialties.indexOf(s.id) !== -1
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={function () { toggleSpecialty(s.id) }}
+                      className={
+                        "px-3 py-2 rounded-md font-['Tajawal'] text-xs transition " +
+                        (isSelected ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-[#F3EEE4] text-[#4A473F] border border-[#D8D2C4]')
+                      }
+                    >
+                      {s.name_ar}
+                    </button>
+                  )
                 })}
-              </select>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">المدينة</label>
-                <input
-                  type="text"
-                  value={city}
-                  onChange={function (e) { setCity(e.target.value) }}
-                  className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
-                />
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-2">المدن (يمكن اختيار أكثر من واحدة)</label>
+              <div className="flex flex-wrap gap-2">
+                {cityOptions.map(function (city) {
+                  const isSelected = selectedCities.indexOf(city) !== -1
+                  return (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={function () { toggleCity(city) }}
+                      className={
+                        "px-3 py-2 rounded-md font-['Tajawal'] text-xs transition " +
+                        (isSelected ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-[#F3EEE4] text-[#4A473F] border border-[#D8D2C4]')
+                      }
+                    >
+                      {city}
+                    </button>
+                  )
+                })}
               </div>
-              <div>
-                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">العنوان</label>
-                <input
-                  type="text"
-                  value={address}
-                  onChange={function (e) { setAddress(e.target.value) }}
-                  className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
-                />
-              </div>
+            </div>
+
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">العنوان</label>
+              <input
+                type="text"
+                value={address}
+                onChange={function (e) { setAddress(e.target.value) }}
+                className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+              />
             </div>
 
             <div>
