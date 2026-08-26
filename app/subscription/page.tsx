@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 
 type AccountInfo = {
@@ -30,12 +31,11 @@ export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true)
   const [account, setAccount] = useState<AccountInfo | null>(null)
   const [notEligible, setNotEligible] = useState(false)
-  const [selecting, setSelecting] = useState(false)
-  const [message, setMessage] = useState('')
-  const [featuredLoading, setFeaturedLoading] = useState(false)
   const [featuredMessage, setFeaturedMessage] = useState('')
+  const [checkingFeatured, setCheckingFeatured] = useState(false)
 
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(function () {
     async function loadData() {
@@ -98,76 +98,32 @@ export default function SubscriptionPage() {
     loadData()
   }, [])
 
-  async function handleSelectTier(tierId: string, price: number) {
+  function goToCheckoutForTier(tierId: string, price: number) {
     if (!account) return
-    setSelecting(true)
-    setMessage('')
-
-    const today = new Date()
-    let nextBillingDate = new Date(today)
-
-    if (tierId === 'monthly') {
-      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1)
-    } else if (tierId === 'yearly') {
-      nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1)
-    } else {
-      nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 5)
-    }
-
-    const startedAtStr = today.toISOString().split('T')[0]
-    const nextBillingStr = nextBillingDate.toISOString().split('T')[0]
-
-    await supabase.from('subscriptions').insert({
-      account_type: account.type,
-      account_id: account.id,
-      tier: tierId,
-      status: 'active',
-      started_at: startedAtStr,
-      next_billing_date: nextBillingStr,
-      price: price,
-    })
-
-    await supabase.from('payments').insert({
-      payment_type: 'subscription',
-      amount: price,
-      related_id: account.id,
-      status: 'completed',
-    })
-
-    const tableName = account.type === 'lawyer' ? 'lawyers' : 'firms'
-
-    await supabase
-      .from(tableName)
-      .update({ subscription_tier: tierId, is_active: true })
-      .eq('id', account.id)
-
-    setSelecting(false)
-    setMessage('تم تفعيل الاشتراك بنجاح!')
-    setAccount(Object.assign({}, account, { currentTier: tierId }))
+    const url = '/checkout?type=subscription&tier=' + tierId + '&amount=' + price + '&accountType=' + account.type + '&accountId=' + account.id
+    router.push(url)
   }
 
-  async function handleFeaturePurchase() {
+  async function handleFeatureClick() {
     if (!account) return
-    setFeaturedLoading(true)
+    setCheckingFeatured(true)
     setFeaturedMessage('')
 
     const today = new Date()
     const todayStr = today.toISOString().split('T')[0]
 
     if (account.type === 'lawyer') {
-      const specId = account.specialtyId
-
       const featuredResult = await supabase
         .from('lawyers')
         .select('id')
         .eq('is_featured', true)
-        .eq('specialty_id', specId)
+        .eq('specialty_id', account.specialtyId)
         .gte('featured_until', todayStr)
 
       const currentCount = featuredResult.data ? featuredResult.data.length : 0
 
       if (currentCount >= 5) {
-        setFeaturedLoading(false)
+        setCheckingFeatured(false)
         setFeaturedMessage('عذراً، امتلأت جميع الأماكن المميزة لهذا التخصص حالياً')
         return
       }
@@ -181,40 +137,22 @@ export default function SubscriptionPage() {
       const currentCount = featuredFirmsResult.data ? featuredFirmsResult.data.length : 0
 
       if (currentCount >= 5) {
-        setFeaturedLoading(false)
+        setCheckingFeatured(false)
         setFeaturedMessage('عذراً، امتلأت جميع الأماكن المميزة حالياً')
         return
       }
     }
 
-    const featuredUntilDate = new Date(today)
-    featuredUntilDate.setMonth(featuredUntilDate.getMonth() + 1)
-    const featuredUntilStr = featuredUntilDate.toISOString().split('T')[0]
     const price = account.type === 'lawyer' ? 50 : 120
-    const tableName = account.type === 'lawyer' ? 'lawyers' : 'firms'
-
-    await supabase
-      .from(tableName)
-      .update({ is_featured: true, featured_until: featuredUntilStr })
-      .eq('id', account.id)
-
-    await supabase.from('payments').insert({
-      payment_type: 'featured_listing',
-      amount: price,
-      related_id: account.id,
-      status: 'completed',
-    })
-
-    setFeaturedLoading(false)
-    setFeaturedMessage('تم تفعيل الإعلان المميز بنجاح، ساري حتى ' + featuredUntilStr)
-    setAccount(Object.assign({}, account, { isFeatured: true, featuredUntil: featuredUntilStr }))
+    const url = '/checkout?type=featured&amount=' + price + '&accountType=' + account.type + '&accountId=' + account.id
+    router.push(url)
   }
 
   function renderTierCard(tier: { id: string; label: string; price: number; totalLabel: string }) {
     const isCurrent = account && account.currentTier === tier.id
 
     function selectClick() {
-      handleSelectTier(tier.id, tier.price)
+      goToCheckoutForTier(tier.id, tier.price)
     }
 
     return (
@@ -223,13 +161,13 @@ export default function SubscriptionPage() {
         <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-6">{tier.totalLabel}</p>
         <button
           onClick={selectClick}
-          disabled={selecting || Boolean(isCurrent)}
+          disabled={Boolean(isCurrent)}
           className={
             "w-full py-3 rounded-md font-['Tajawal'] font-medium transition disabled:opacity-60 " +
             (isCurrent ? 'bg-[#2F4538] text-white' : 'bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E]')
           }
         >
-          {isCurrent ? 'الخطة الحالية' : selecting ? 'جاري التفعيل...' : 'اختر هذه الخطة'}
+          {isCurrent ? 'الخطة الحالية' : 'اختر هذه الخطة'}
         </button>
       </div>
     )
@@ -297,13 +235,9 @@ export default function SubscriptionPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
           {tiers.map(renderTierCard)}
         </div>
-
-        {message && (
-          <p className="text-center font-['Tajawal'] text-sm text-[#2F4538] mb-10">{message}</p>
-        )}
 
         <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6">
           <div className="flex justify-between items-center mb-3">
@@ -321,11 +255,11 @@ export default function SubscriptionPage() {
           )}
 
           <button
-            onClick={handleFeaturePurchase}
-            disabled={featuredLoading}
+            onClick={handleFeatureClick}
+            disabled={checkingFeatured}
             className="w-full py-3 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] font-medium hover:bg-[#c49b58] transition disabled:opacity-60"
           >
-            {featuredLoading ? 'جاري التفعيل...' : account.isFeatured ? 'تجديد لمدة شهر إضافي' : 'فعّل الإعلان المميز'}
+            {checkingFeatured ? 'جاري التحقق...' : account.isFeatured ? 'تجديد لمدة شهر إضافي' : 'فعّل الإعلان المميز'}
           </button>
 
           {featuredMessage && (
