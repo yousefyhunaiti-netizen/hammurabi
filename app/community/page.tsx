@@ -22,6 +22,15 @@ type LawyerName = {
   full_name: string
 }
 
+type AnswerCount = {
+  question_id: number
+}
+
+type Repost = {
+  post_id: number
+  lawyer_id: number
+}
+
 export default function CommunityPage() {
   const [loading, setLoading] = useState(true)
   const [isLawyer, setIsLawyer] = useState(false)
@@ -29,6 +38,8 @@ export default function CommunityPage() {
   const [questions, setQuestions] = useState<Question[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [lawyerNames, setLawyerNames] = useState<LawyerName[]>([])
+  const [answerCounts, setAnswerCounts] = useState<AnswerCount[]>([])
+  const [reposts, setReposts] = useState<Repost[]>([])
   const [selectedSpecialty, setSelectedSpecialty] = useState<number | null>(null)
 
   const [showForm, setShowForm] = useState(false)
@@ -49,6 +60,12 @@ export default function CommunityPage() {
       const namesResult = await supabase.from('lawyers').select('id, full_name').in('id', lawyerIds)
       setLawyerNames(namesResult.data || [])
     }
+
+    const answersResult = await supabase.from('community_answers').select('question_id')
+    setAnswerCounts(answersResult.data || [])
+
+    const repostsResult = await supabase.from('reposts').select('post_id, lawyer_id').eq('post_type', 'question')
+    setReposts(repostsResult.data || [])
   }
 
   useEffect(function () {
@@ -92,6 +109,20 @@ export default function CommunityPage() {
     setPosting(false)
   }
 
+  async function handleRepost(questionId: number) {
+    if (!lawyerId) return
+
+    const existing = reposts.find(function (r) { return r.post_id === questionId && r.lawyer_id === lawyerId })
+
+    if (existing) {
+      await supabase.from('reposts').delete().eq('post_type', 'question').eq('post_id', questionId).eq('lawyer_id', lawyerId)
+    } else {
+      await supabase.from('reposts').insert({ post_type: 'question', post_id: questionId, lawyer_id: lawyerId })
+    }
+
+    await loadQuestions()
+  }
+
   function getSpecialtyName(id: number | null) {
     if (!id) return ''
     const found = specialties.find(function (s) { return s.id === id })
@@ -103,23 +134,65 @@ export default function CommunityPage() {
     return found ? found.full_name : ''
   }
 
+  function getAnswerCount(questionId: number) {
+    return answerCounts.filter(function (a) { return a.question_id === questionId }).length
+  }
+
+  function getRepostCount(questionId: number) {
+    return reposts.filter(function (r) { return r.post_id === questionId }).length
+  }
+
+  function isRepostedByMe(questionId: number) {
+    if (!lawyerId) return false
+    return reposts.some(function (r) { return r.post_id === questionId && r.lawyer_id === lawyerId })
+  }
+
   const filteredQuestions = questions.filter(function (q) {
     return selectedSpecialty ? q.specialty_id === selectedSpecialty : true
   })
 
   function renderQuestion(q: Question) {
     const link = '/community/' + q.id
+    const answerCount = getAnswerCount(q.id)
+    const repostCount = getRepostCount(q.id)
+    const reposted = isRepostedByMe(q.id)
+
+    function repostClick(e: React.MouseEvent) {
+      e.preventDefault()
+      handleRepost(q.id)
+    }
+
     return (
-      <a key={q.id} href={link} className="block bg-white border border-[#D8D2C4] rounded-lg p-5 mb-3 hover:shadow-lg transition">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="font-['Tajawal'] font-bold text-[#1B1A17]">{q.title}</h3>
-          {q.specialty_id && (
-            <span className="px-3 py-1 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">{getSpecialtyName(q.specialty_id)}</span>
-          )}
+      <div key={q.id} className="bg-white border border-[#D8D2C4] rounded-lg mb-4 overflow-hidden">
+        <div className="p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-11 h-11 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-lg flex-shrink-0">
+              {getLawyerName(q.lawyer_id).charAt(0)}
+            </div>
+            <div>
+              <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{getLawyerName(q.lawyer_id)}</p>
+              {q.specialty_id && (
+                <span className="font-['Tajawal'] text-xs text-[#AD8A4E]">{getSpecialtyName(q.specialty_id)}</span>
+              )}
+            </div>
+          </div>
+
+          <a href={link} className="block">
+            <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-2">{q.title}</h3>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] line-clamp-3">{q.body}</p>
+          </a>
         </div>
-        <p className="font-['Tajawal'] text-sm text-[#4A473F] line-clamp-2 mb-2">{q.body}</p>
-        <p className="font-['Tajawal'] text-xs text-[#AD8A4E]">بواسطة {getLawyerName(q.lawyer_id)}</p>
-      </a>
+
+        <div className="flex items-center justify-between px-5 py-3 border-t border-[#D8D2C4] bg-[#F3EEE4]">
+          <a href={link} className="font-['Tajawal'] text-xs text-[#4A473F]">{answerCount} إجابة</a>
+          <button
+            onClick={repostClick}
+            className={"flex items-center gap-1 font-['Tajawal'] text-xs px-3 py-1.5 rounded-md transition " + (reposted ? 'bg-[#AD8A4E] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}
+          >
+            🔁 {reposted ? 'تمت إعادة النشر' : 'إعادة نشر'} {repostCount > 0 ? '(' + repostCount + ')' : ''}
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -134,14 +207,14 @@ export default function CommunityPage() {
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-2xl mx-auto">
           <h1 className="font-['Amiri'] text-4xl mb-2">مجتمع المحامين</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E] mb-3"></div>
           <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">أسئلة وإجابات بين المحامين</p>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-2xl mx-auto px-6 py-8">
         <div className="flex flex-col md:flex-row gap-4 mb-6 items-start md:items-center justify-between">
           <select
             value={selectedSpecialty ?? ''}

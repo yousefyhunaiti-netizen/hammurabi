@@ -16,12 +16,18 @@ type LawyerName = {
   full_name: string
 }
 
+type Repost = {
+  post_id: number
+  lawyer_id: number
+}
+
 export default function SuccessStoriesPage() {
   const [loading, setLoading] = useState(true)
   const [isLawyer, setIsLawyer] = useState(false)
   const [lawyerId, setLawyerId] = useState<number | null>(null)
   const [stories, setStories] = useState<Story[]>([])
   const [lawyerNames, setLawyerNames] = useState<LawyerName[]>([])
+  const [reposts, setReposts] = useState<Repost[]>([])
 
   const [showForm, setShowForm] = useState(false)
   const [title, setTitle] = useState('')
@@ -40,6 +46,9 @@ export default function SuccessStoriesPage() {
       const namesResult = await supabase.from('lawyers').select('id, full_name').in('id', lawyerIds)
       setLawyerNames(namesResult.data || [])
     }
+
+    const repostsResult = await supabase.from('reposts').select('post_id, lawyer_id').eq('post_type', 'story')
+    setReposts(repostsResult.data || [])
   }
 
   useEffect(function () {
@@ -78,17 +87,64 @@ export default function SuccessStoriesPage() {
     setPosting(false)
   }
 
+  async function handleRepost(storyId: number) {
+    if (!lawyerId) return
+
+    const existing = reposts.find(function (r) { return r.post_id === storyId && r.lawyer_id === lawyerId })
+
+    if (existing) {
+      await supabase.from('reposts').delete().eq('post_type', 'story').eq('post_id', storyId).eq('lawyer_id', lawyerId)
+    } else {
+      await supabase.from('reposts').insert({ post_type: 'story', post_id: storyId, lawyer_id: lawyerId })
+    }
+
+    await loadStories()
+  }
+
   function getLawyerName(id: number) {
     const found = lawyerNames.find(function (l) { return l.id === id })
     return found ? found.full_name : ''
   }
 
+  function getRepostCount(storyId: number) {
+    return reposts.filter(function (r) { return r.post_id === storyId }).length
+  }
+
+  function isRepostedByMe(storyId: number) {
+    if (!lawyerId) return false
+    return reposts.some(function (r) { return r.post_id === storyId && r.lawyer_id === lawyerId })
+  }
+
   function renderStory(story: Story) {
+    const repostCount = getRepostCount(story.id)
+    const reposted = isRepostedByMe(story.id)
+
+    function repostClick() {
+      handleRepost(story.id)
+    }
+
     return (
-      <div key={story.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-4">
-        <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">{story.title}</h3>
-        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-3 whitespace-pre-wrap">{story.body}</p>
-        <p className="font-['Tajawal'] text-xs text-[#AD8A4E]">بواسطة {getLawyerName(story.lawyer_id)}</p>
+      <div key={story.id} className="bg-white border border-[#D8D2C4] rounded-lg mb-4 overflow-hidden">
+        <div className="p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-11 h-11 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-lg flex-shrink-0">
+              {getLawyerName(story.lawyer_id).charAt(0)}
+            </div>
+            <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{getLawyerName(story.lawyer_id)}</p>
+          </div>
+
+          <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-2">{story.title}</h3>
+          <p className="font-['Tajawal'] text-sm text-[#4A473F] whitespace-pre-wrap">{story.body}</p>
+        </div>
+
+        <div className="flex items-center justify-end px-5 py-3 border-t border-[#D8D2C4] bg-[#F3EEE4]">
+          <button
+            onClick={repostClick}
+            className={"flex items-center gap-1 font-['Tajawal'] text-xs px-3 py-1.5 rounded-md transition " + (reposted ? 'bg-[#AD8A4E] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}
+          >
+            🔁 {reposted ? 'تمت إعادة النشر' : 'إعادة نشر'} {repostCount > 0 ? '(' + repostCount + ')' : ''}
+          </button>
+        </div>
       </div>
     )
   }
@@ -104,14 +160,14 @@ export default function SuccessStoriesPage() {
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-2xl mx-auto">
           <h1 className="font-['Amiri'] text-4xl mb-2">قصص نجاح</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E] mb-3"></div>
           <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">شارك المحامون تجاربهم ونجاحاتهم</p>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-2xl mx-auto px-6 py-8">
         {isLawyer && (
           <button
             onClick={function () { setShowForm(!showForm) }}
