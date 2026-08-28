@@ -80,7 +80,9 @@ export default function HomePage() {
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4]">
         <div className="max-w-6xl mx-auto px-6 py-5 flex justify-between items-center">
-          <a href="/" className="font-['Amiri'] text-2xl">حمورابي</a>
+          <a href="/">
+            <img src="/logo.png" alt="حمورابي" className="h-14 md:h-16 w-auto" />
+          </a>
 
           <div className="hidden lg:flex gap-6 items-center">
             <a href="/lawyers" className={navLinkClass}>دليل المحامين</a>
@@ -146,11 +148,11 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
             <div>
               <h2 className="font-['Amiri'] text-4xl md:text-5xl leading-tight mb-6">
-                محاموك الموثوق، بضغطة واحدة
+                قضيتك تبدأ مع المحامي المناسب.
               </h2>
               <div className="w-20 h-[2px] shimmer-line mb-6"></div>
               <p className="font-['Tajawal'] text-lg text-[#D8D2C4] mb-10 leading-relaxed">
-                منصة حمورابي تربطك بمحامين موثوقين في الأردن، حسب التخصص والمدينة، مع إمكانية حجز موعد أو طلب استشارة سريعة مباشرة من هاتفك.
+                من التخصص إلى الموقع، حمورابي يساعدك على تضييق الخيارات والوصول إلى المحامي الذي يناسب احتياجك القانوني.
               </p>
               <div className="flex flex-wrap gap-4">
                 <a href="/lawyers" className={heroCtaClass}>تصفح المحامين</a>
@@ -159,37 +161,24 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-center">
-              <svg viewBox="0 0 320 320" className="w-64 h-64 md:w-80 md:h-80 opacity-90">
-                <g stroke="#AD8A4E" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="160" y1="40" x2="160" y2="220" />
-                  <line x1="70" y1="80" x2="250" y2="80" />
-                  <circle cx="70" cy="80" r="3" fill="#AD8A4E" />
-                  <circle cx="250" cy="80" r="3" fill="#AD8A4E" />
-                  <path d="M40 100 Q70 150 100 100" />
-                  <path d="M220 100 Q250 150 280 100" />
-                  <line x1="120" y1="220" x2="200" y2="220" />
-                  <line x1="160" y1="220" x2="160" y2="240" />
-                  <rect x="90" y="250" width="140" height="14" rx="2" />
-                  <rect x="110" y="264" width="100" height="10" rx="2" />
-                </g>
-              </svg>
+              <img src="/scale.png" alt="ميزان العدالة" className="w-64 h-64 md:w-96 md:h-96 object-contain" />
             </div>
           </div>
         </div>
 
         <div className="border-t border-[#3A382F]">
-          <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-3 gap-6 text-center">
+          <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-3 gap-6 text-center">
             <div>
-              <p className="font-['Amiri'] text-3xl text-[#AD8A4E]">{lawyerCount}+</p>
-              <p className="font-['Tajawal'] text-xs text-[#D8D2C4] mt-1">محامٍ موثوق</p>
+              <p className="font-['Amiri'] text-5xl md:text-6xl text-[#AD8A4E] font-bold">{lawyerCount}+</p>
+              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">محامٍ موثوق</p>
             </div>
             <div>
-              <p className="font-['Amiri'] text-3xl text-[#AD8A4E]">{specialtyCount}+</p>
-              <p className="font-['Tajawal'] text-xs text-[#D8D2C4] mt-1">تخصص قانوني</p>
+              <p className="font-['Amiri'] text-5xl md:text-6xl text-[#AD8A4E] font-bold">{specialtyCount}+</p>
+              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">تخصص قانوني</p>
             </div>
             <div>
-              <p className="font-['Amiri'] text-3xl text-[#AD8A4E]">{cityCount}+</p>
-              <p className="font-['Tajawal'] text-xs text-[#D8D2C4] mt-1">مدينة أردنية</p>
+              <p className="font-['Amiri'] text-5xl md:text-6xl text-[#AD8A4E] font-bold">{cityCount}+</p>
+              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">مدينة أردنية</p>
             </div>
           </div>
         </div>
@@ -197,32 +186,32 @@ export default function HomePage() {
 
       <div className="max-w-6xl mx-auto px-6 py-16">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 text-center">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#1B1A17] flex items-center justify-center">
-              <svg className="w-6 h-6 text-[#AD8A4E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <div className="bg-white border border-[#D8D2C4] rounded-lg p-8 text-center">
+            <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-[#1B1A17] flex items-center justify-center">
+              <svg className="w-10 h-10 text-[#AD8A4E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 6v6l4 2" />
               </svg>
             </div>
-            <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-2">احجز في دقائق</h3>
+            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">احجز في دقائق</h3>
             <p className="font-['Tajawal'] text-sm text-[#4A473F]">اختر الوقت المناسب لك، حضورياً أو عبر الفيديو</p>
           </div>
-          <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 text-center">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#1B1A17] flex items-center justify-center">
-              <svg className="w-6 h-6 text-[#AD8A4E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <div className="bg-white border border-[#D8D2C4] rounded-lg p-8 text-center">
+            <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-[#1B1A17] flex items-center justify-center">
+              <svg className="w-10 h-10 text-[#AD8A4E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
               </svg>
             </div>
-            <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-2">محامون موثقون</h3>
+            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">محامون موثقون</h3>
             <p className="font-['Tajawal'] text-sm text-[#4A473F]">كل محامٍ يخضع للمراجعة قبل الظهور على المنصة</p>
           </div>
-          <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 text-center">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#1B1A17] flex items-center justify-center">
-              <svg className="w-6 h-6 text-[#AD8A4E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <div className="bg-white border border-[#D8D2C4] rounded-lg p-8 text-center">
+            <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-[#1B1A17] flex items-center justify-center">
+              <svg className="w-10 h-10 text-[#AD8A4E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-6l-4 4v-4z" />
               </svg>
             </div>
-            <h3 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-2">استشارة سريعة</h3>
+            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">استشارة سريعة</h3>
             <p className="font-['Tajawal'] text-sm text-[#4A473F]">اسأل سؤالك واحصل على إجابة موثقة من محامٍ مختص</p>
           </div>
         </div>

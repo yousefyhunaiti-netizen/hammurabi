@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '../lib/supabase'
 
 export default function SignupPage() {
   const [userType, setUserType] = useState('customer')
@@ -9,15 +8,23 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
+  const [agreed, setAgreed] = useState(false)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
-
-  const supabase = createClient()
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setMessage('')
+
+    if (!agreed) {
+      setMessage('خطأ: يجب الموافقة على الشروط والأحكام أولاً')
+      return
+    }
+
     setLoading(true)
+
+    const { createClient } = await import('../lib/supabase')
+    const supabase = createClient()
 
     const signUpResult = await supabase.auth.signUp({ email: email, password: password })
 
@@ -28,6 +35,7 @@ export default function SignupPage() {
     }
 
     const userId = signUpResult.data.user ? signUpResult.data.user.id : null
+    const nowStr = new Date().toISOString()
 
     if (userType === 'customer') {
       await supabase.from('customers').insert({
@@ -35,6 +43,8 @@ export default function SignupPage() {
         full_name: fullName,
         email: email,
         phone: phone,
+        agreed_to_terms: true,
+        agreed_at: nowStr,
       })
     } else if (userType === 'lawyer') {
       await supabase.from('lawyers').insert({
@@ -44,6 +54,8 @@ export default function SignupPage() {
         phone: phone,
         is_approved: false,
         is_active: false,
+        agreed_to_terms: true,
+        agreed_at: nowStr,
       })
     } else if (userType === 'firm') {
       await supabase.from('firms').insert({
@@ -53,6 +65,8 @@ export default function SignupPage() {
         phone: phone,
         is_approved: false,
         is_active: false,
+        agreed_to_terms: true,
+        agreed_at: nowStr,
       })
     }
 
@@ -159,6 +173,21 @@ export default function SignupPage() {
                 required
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
               />
+            </div>
+
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                id="agree-terms"
+                checked={agreed}
+                onChange={function (e) { setAgreed(e.target.checked) }}
+                className="mt-1"
+              />
+              <label htmlFor="agree-terms" className="font-['Tajawal'] text-xs text-[#4A473F]">
+                أقر بصحة المعلومات المقدمة، وأوافق على{' '}
+                <a href="/terms" target="_blank" className="text-[#AD8A4E] underline">الشروط والأحكام</a>
+                {' '}الخاصة بمنصة حمورابي
+              </label>
             </div>
 
             <button
