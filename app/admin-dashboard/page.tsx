@@ -45,8 +45,12 @@ export default function AdminDashboardPage() {
   const [customerCount, setCustomerCount] = useState(0)
   const [lawyerCount, setLawyerCount] = useState(0)
   const [firmCount, setFirmCount] = useState(0)
+
+  const [viewMode, setViewMode] = useState('monthly')
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [selectedDay, setSelectedDay] = useState(new Date())
+
   const [allLawyers, setAllLawyers] = useState<LawyerRow[]>([])
   const [allFirms, setAllFirms] = useState<FirmRow[]>([])
   const [compedUpdating, setCompedUpdating] = useState<string | null>(null)
@@ -110,37 +114,58 @@ export default function AdminDashboardPage() {
     return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear
   }
 
-  const monthPayments = payments.filter(function (p) {
-    return isInSelectedMonth(p.created_at) && p.status === 'completed'
-  })
+  function isInSelectedDay(dateStr: string) {
+    const d = new Date(dateStr)
+    return d.getFullYear() === selectedDay.getFullYear() && d.getMonth() === selectedDay.getMonth() && d.getDate() === selectedDay.getDate()
+  }
 
-  let monthRevenue = 0
-  for (let i = 0; i < monthPayments.length; i++) {
-    monthRevenue = monthRevenue + Number(monthPayments[i].amount)
+  const scopedPayments = viewMode === 'monthly'
+    ? payments.filter(function (p) { return isInSelectedMonth(p.created_at) && p.status === 'completed' })
+    : payments.filter(function (p) { return isInSelectedDay(p.created_at) && p.status === 'completed' })
+
+  let scopedRevenue = 0
+  for (let i = 0; i < scopedPayments.length; i++) {
+    scopedRevenue = scopedRevenue + Number(scopedPayments[i].amount)
   }
 
   const activeSubscriptions = subscriptions.filter(function (s) { return s.status === 'active' })
-  const cancelledThisMonth = subscriptions.filter(function (s) {
-    return s.status === 'cancelled' && isInSelectedMonth(s.started_at)
-  })
+
+  const cancelledScoped = viewMode === 'monthly'
+    ? subscriptions.filter(function (s) { return s.status === 'cancelled' && isInSelectedMonth(s.started_at) })
+    : subscriptions.filter(function (s) { return s.status === 'cancelled' && isInSelectedDay(s.started_at) })
 
   function buildDailyRevenueData() {
     const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate()
     const data = []
     for (let day = 1; day <= daysInMonth; day++) {
       let dayTotal = 0
-      for (let i = 0; i < monthPayments.length; i++) {
-        const d = new Date(monthPayments[i].created_at)
+      for (let i = 0; i < scopedPayments.length; i++) {
+        const d = new Date(scopedPayments[i].created_at)
         if (d.getDate() === day) {
-          dayTotal = dayTotal + Number(monthPayments[i].amount)
+          dayTotal = dayTotal + Number(scopedPayments[i].amount)
         }
       }
-      data.push({ day: String(day), revenue: dayTotal })
+      data.push({ label: String(day), revenue: dayTotal })
     }
     return data
   }
 
-  const chartData = buildDailyRevenueData()
+  function buildHourlyRevenueData() {
+    const data = []
+    for (let hour = 0; hour < 24; hour++) {
+      let hourTotal = 0
+      for (let i = 0; i < scopedPayments.length; i++) {
+        const d = new Date(scopedPayments[i].created_at)
+        if (d.getHours() === hour) {
+          hourTotal = hourTotal + Number(scopedPayments[i].amount)
+        }
+      }
+      data.push({ label: String(hour) + ':00', revenue: hourTotal })
+    }
+    return data
+  }
+
+  const chartData = viewMode === 'monthly' ? buildDailyRevenueData() : buildHourlyRevenueData()
 
   function changeMonth(direction: number) {
     let newMonth = selectedMonth + direction
@@ -155,6 +180,16 @@ export default function AdminDashboardPage() {
     }
     setSelectedMonth(newMonth)
     setSelectedYear(newYear)
+  }
+
+  function changeDay(direction: number) {
+    const newDay = new Date(selectedDay)
+    newDay.setDate(newDay.getDate() + direction)
+    setSelectedDay(newDay)
+  }
+
+  function formatDayLabel(d: Date) {
+    return d.getDate() + ' ' + monthNames[d.getMonth()] + ' ' + d.getFullYear()
   }
 
   async function toggleLawyerComped(lawyer: LawyerRow) {
@@ -267,30 +302,56 @@ export default function AdminDashboardPage() {
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-10 px-6">
         <div className="max-w-6xl mx-auto">
-          <h1 className="font-['Amiri'] text-4xl mb-2">لوحة تحكم المدير</h1>
+          <img src="/logo.png" alt="حمورابي" className="h-12 w-auto mb-4" />
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">لوحة تحكم المدير</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-center gap-4 mb-8 bg-white border border-[#D8D2C4] rounded-lg p-4 w-fit mx-auto">
-          <button onClick={function () { changeMonth(-1) }} className="px-3 py-2 bg-[#F3EEE4] rounded-md font-['Tajawal'] text-sm">السابق</button>
-          <p className="font-['Tajawal'] font-bold text-[#1B1A17] w-32 text-center">{monthNames[selectedMonth]} {selectedYear}</p>
-          <button onClick={function () { changeMonth(1) }} className="px-3 py-2 bg-[#F3EEE4] rounded-md font-['Tajawal'] text-sm">التالي</button>
+        <div className="flex justify-center mb-4">
+          <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 w-fit">
+            <button
+              onClick={function () { setViewMode('monthly') }}
+              className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'monthly' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}
+            >
+              شهري
+            </button>
+            <button
+              onClick={function () { setViewMode('daily') }}
+              className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'daily' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}
+            >
+              يومي
+            </button>
+          </div>
         </div>
+
+        {viewMode === 'monthly' ? (
+          <div className="flex items-center justify-center gap-4 mb-8 bg-white border border-[#D8D2C4] rounded-lg p-4 w-fit mx-auto">
+            <button onClick={function () { changeMonth(-1) }} className="px-3 py-2 bg-[#F3EEE4] rounded-md font-['Tajawal'] text-sm">السابق</button>
+            <p className="font-['Tajawal'] font-bold text-[#1B1A17] w-32 text-center">{monthNames[selectedMonth]} {selectedYear}</p>
+            <button onClick={function () { changeMonth(1) }} className="px-3 py-2 bg-[#F3EEE4] rounded-md font-['Tajawal'] text-sm">التالي</button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-4 mb-8 bg-white border border-[#D8D2C4] rounded-lg p-4 w-fit mx-auto">
+            <button onClick={function () { changeDay(-1) }} className="px-3 py-2 bg-[#F3EEE4] rounded-md font-['Tajawal'] text-sm">السابق</button>
+            <p className="font-['Tajawal'] font-bold text-[#1B1A17] w-40 text-center">{formatDayLabel(selectedDay)}</p>
+            <button onClick={function () { changeDay(1) }} className="px-3 py-2 bg-[#F3EEE4] rounded-md font-['Tajawal'] text-sm">التالي</button>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 text-center">
-            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">الأرباح هذا الشهر</p>
-            <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17]">{monthRevenue.toFixed(0)} د.أ</p>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">{viewMode === 'monthly' ? 'الأرباح هذا الشهر' : 'الأرباح هذا اليوم'}</p>
+            <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17]">{scopedRevenue.toFixed(0)} د.أ</p>
           </div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 text-center">
             <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">اشتراكات فعّالة</p>
             <p className="font-['Tajawal'] font-bold text-2xl text-[#2F4538]">{activeSubscriptions.length}</p>
           </div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 text-center">
-            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">إلغاءات هذا الشهر</p>
-            <p className="font-['Tajawal'] font-bold text-2xl text-[#7A2E2E]">{cancelledThisMonth.length}</p>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">{viewMode === 'monthly' ? 'إلغاءات هذا الشهر' : 'إلغاءات هذا اليوم'}</p>
+            <p className="font-['Tajawal'] font-bold text-2xl text-[#7A2E2E]">{cancelledScoped.length}</p>
           </div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 text-center">
             <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">إجمالي المستخدمين</p>
@@ -314,12 +375,12 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-8">
-          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">الإيرادات اليومية</h2>
+          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">{viewMode === 'monthly' ? 'الإيرادات اليومية' : 'الإيرادات بالساعة'}</h2>
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" />
-                <XAxis dataKey="day" fontSize={11} />
+                <XAxis dataKey="label" fontSize={11} />
                 <YAxis fontSize={11} />
                 <Tooltip />
                 <Bar dataKey="revenue" fill="#AD8A4E" />

@@ -303,13 +303,21 @@ export default function LawyersPage() {
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
-            <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
-            <div className="flex gap-5 items-center">
+            <a href="/">
+              <img src="/logo.png" alt="حمورابي" className="h-10 w-auto" />
+            </a>            <div className="flex gap-5 items-center">
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               {isLawyerAccount && (
                 <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
               )}
 
               {!checkingAuth && !loggedIn && (
@@ -346,8 +354,7 @@ export default function LawyersPage() {
               )}
             </div>
           </div>
-          <h1 className="font-['Amiri'] text-4xl md:text-5xl mb-3">دليل المحامين</h1>
-          <div className="w-16 h-[2px] bg-[#AD8A4E] mb-6"></div>
+          <h1 className="font-['Tajawal'] font-bold text-4xl md:text-5xl mb-3">دليل المحامين</h1>          <div className="w-16 h-[2px] bg-[#AD8A4E] mb-6"></div>
           <p className="font-['Tajawal'] text-[#D8D2C4]">ابحث عن محامٍ موثوق حسب التخصص والمدينة</p>
         </div>
       </div>

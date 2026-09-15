@@ -15,6 +15,7 @@ type Firm = {
   google_maps_link: string | null
   website_url: string | null
   show_lawyer_names: boolean | null
+  founded_year: number | null
 }
 
 export default function FirmInfoPage() {
@@ -89,11 +90,16 @@ export default function FirmInfoPage() {
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
-            <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
+            <a href="/">
+              <img src="/logo.png" alt="حمورابي" className="h-12 w-auto" />
+            </a>
             <div className="flex gap-5 items-center">
-              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              <a href="/firm-dashboard" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
+              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
               <div className="relative">
                 <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                   <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
@@ -103,7 +109,10 @@ export default function FirmInfoPage() {
                 {menuOpen && (
                   <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
                     <a href="/firm-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">
-                      معلوماتي الشخصية
+                      معلومات المكتب
+                    </a>
+                    <a href="/subscription" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">
+                      الاشتراك والإعلانات
                     </a>
                     <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">
                       تسجيل الخروج
@@ -113,7 +122,7 @@ export default function FirmInfoPage() {
               </div>
             </div>
           </div>
-          <h1 className="font-['Amiri'] text-4xl mb-2">معلومات المكتب</h1>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">معلومات المكتب</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
         </div>
       </div>
@@ -141,13 +150,17 @@ export default function FirmInfoPage() {
               <p className="text-[#4A473F] mb-1">العنوان</p>
               <p className="text-[#1B1A17] font-medium">{firm.address || '-'}</p>
             </div>
-            <div className="col-span-2">
-              <p className="text-[#4A473F] mb-1">نبذة</p>
-              <p className="text-[#1B1A17] font-medium">{firm.bio || '-'}</p>
+            <div>
+              <p className="text-[#4A473F] mb-1">سنة التأسيس</p>
+              <p className="text-[#1B1A17] font-medium">{firm.founded_year || '-'}</p>
             </div>
             <div>
               <p className="text-[#4A473F] mb-1">عرض أسماء المحامين</p>
               <p className="text-[#1B1A17] font-medium">{firm.show_lawyer_names ? 'مفعّل' : 'غير مفعّل'}</p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-[#4A473F] mb-1">نبذة</p>
+              <p className="text-[#1B1A17] font-medium">{firm.bio || '-'}</p>
             </div>
           </div>
         </div>

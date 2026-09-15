@@ -16,6 +16,7 @@ type Lawyer = {
   phone: string | null
   email: string | null
   consultation_fee: number | null
+  hourly_rate_range: string | null
   years_experience: number | null
   bar_certificate_number: string | null
   working_days: string | null
@@ -25,6 +26,8 @@ type Lawyer = {
   google_maps_link: string | null
   website_url: string | null
   firm_id: number | null
+  is_active: boolean | null
+  is_comped: boolean | null
 }
 
 type Specialty = {
@@ -48,8 +51,9 @@ export default function LawyerDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [lawyer, setLawyer] = useState<Lawyer | null>(null)
   const [notLawyer, setNotLawyer] = useState(false)
-  const [belongsToFirm, setBelongsToFirm] = useState(false)
+  const [notSubscribed, setNotSubscribed] = useState(false)
   const [specialties, setSpecialties] = useState<Specialty[]>([])
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const [fullName, setFullName] = useState('')
   const [bio, setBio] = useState('')
@@ -58,6 +62,7 @@ export default function LawyerDashboardPage() {
   const [address, setAddress] = useState('')
   const [phone, setPhone] = useState('')
   const [fee, setFee] = useState('')
+  const [hourlyRange, setHourlyRange] = useState('')
   const [experience, setExperience] = useState('')
   const [barNumber, setBarNumber] = useState('')
   const [selectedDays, setSelectedDays] = useState<number[]>([])
@@ -95,8 +100,8 @@ export default function LawyerDashboardPage() {
         return
       }
 
-      if (lawyerResult.data.firm_id) {
-        setBelongsToFirm(true)
+      if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
+        setNotSubscribed(true)
         setLoading(false)
         return
       }
@@ -109,6 +114,7 @@ export default function LawyerDashboardPage() {
       setAddress(l.address || '')
       setPhone(l.phone || '')
       setFee(l.consultation_fee ? String(l.consultation_fee) : '')
+      setHourlyRange(l.hourly_rate_range || '')
       setExperience(l.years_experience ? String(l.years_experience) : '')
       setBarNumber(l.bar_certificate_number || '')
       setHoursStart(l.working_hours_start || '09:00')
@@ -144,6 +150,16 @@ export default function LawyerDashboardPage() {
 
     loadData()
   }, [])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setMenuOpen(false)
+    router.push('/')
+  }
+
+  function toggleMenu() {
+    setMenuOpen(!menuOpen)
+  }
 
   function toggleDay(dayValue: number) {
     if (selectedDays.indexOf(dayValue) !== -1) {
@@ -192,7 +208,8 @@ export default function LawyerDashboardPage() {
         cities: citiesString,
         address: address,
         phone: phone,
-        consultation_fee: fee ? Number(fee) : 0,
+        consultation_fee: fee ? Number(fee) : null,
+        hourly_rate_range: hourlyRange,
         years_experience: experience ? Number(experience) : 0,
         bar_certificate_number: barNumber,
         working_days: workingDaysString,
@@ -214,7 +231,7 @@ export default function LawyerDashboardPage() {
     setSaveMessage('تم حفظ التغييرات بنجاح')
 
     setTimeout(function () {
-      router.push('/')
+      router.push('/lawyer-info')
     }, 1200)
   }
 
@@ -237,11 +254,14 @@ export default function LawyerDashboardPage() {
     )
   }
 
-  if (belongsToFirm) {
+  if (notSubscribed) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
-        <div className="text-center">
-          <p className="font-['Tajawal'] text-[#4A473F]">ملفك الشخصي يُدار من قبل المكتب الذي تعمل به</p>
+        <div className="text-center max-w-md">
+          <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
+            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى هذه الصفحة</h1>
+            <a href="/subscription" className="inline-block mt-4 px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">عرض خطط الاشتراك</a>
+          </div>
         </div>
       </div>
     )
@@ -251,7 +271,29 @@ export default function LawyerDashboardPage() {
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-3xl mx-auto">
-          <h1 className="font-['Amiri'] text-4xl mb-2">لوحة التحكم</h1>
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+            <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
+            <div className="flex gap-5 items-center">
+              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
+              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
+              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
+              <div className="relative">
+                <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
+                </button>
+                {menuOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
+                    <a href="/lawyer-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>
+                    <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">تسجيل الخروج</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">لوحة التحكم</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
         </div>
       </div>
@@ -347,7 +389,7 @@ export default function LawyerDashboardPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رسوم الاستشارة (د.أ)</label>
+                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رسوم الاستشارة السريعة (د.أ) — اختياري</label>
                 <input
                   type="number"
                   value={fee}
@@ -372,6 +414,16 @@ export default function LawyerDashboardPage() {
                 type="text"
                 value={barNumber}
                 onChange={function (e) { setBarNumber(e.target.value) }}
+                className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+              />
+            </div>
+                        <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نطاق الأجرة بالساعة (اختياري، للعرض فقط)</label>
+              <input
+                type="text"
+                value={hourlyRange}
+                onChange={function (e) { setHourlyRange(e.target.value) }}
+                placeholder="مثال: 50-100"
                 className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
               />
             </div>
@@ -423,16 +475,6 @@ export default function LawyerDashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
-          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">الإجازة</h2>
-          <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">في إجازة حتى (اتركها فارغة إذا لم تكن في إجازة)</label>
-          <input
-            type="date"
-            value={vacationUntil}
-            onChange={function (e) { setVacationUntil(e.target.value) }}
-            className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
-          />
-        </div>
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">روابط إضافية</h2>

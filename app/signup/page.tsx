@@ -82,15 +82,17 @@ export default function SignupPage() {
   return (
     <div dir="rtl" className="min-h-screen flex flex-col md:flex-row">
       <div className="relative md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.07] pointer-events-none"
-          style={{ backgroundImage: 'repeating-linear-gradient(180deg, transparent, transparent 38px, #AD8A4E 39px)' }}
+        <img
+          src="/scale.png"
+          alt=""
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] opacity-[0.07] pointer-events-none object-contain"
         />
+
         <div className="relative z-10 max-w-md mx-auto md:mx-0">
-          <h1 className="font-['Amiri'] text-6xl md:text-7xl leading-none mb-4">حمورابي</h1>
-          <div className="w-16 h-[2px] bg-[#AD8A4E] mb-6"></div>
-          <p className="font-['Tajawal'] text-lg text-[#D8D2C4] leading-relaxed">
-            انضم إلى منصة حمورابي، سواء كنت تبحث عن استشارة قانونية موثوقة، محامياً فردياً، أو مكتب محاماة.
+          <img src="/logo.png" alt="حمورابي" className="h-24 md:h-28 w-auto mb-3" />
+          <div className="w-20 h-[3px] shimmer-line mb-6"></div>
+          <p className="font-['Tajawal'] text-sm md:text-base text-[#D8D2C4] leading-relaxed">
+            بوابتك المتكاملة لإدارة منظومة العمل القانوني.
           </p>
         </div>
       </div>
@@ -193,7 +195,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] font-['Tajawal'] font-medium rounded-md hover:bg-[#AD8A4E] transition disabled:opacity-60"
+              className="w-full py-3.5 bg-[#1B1A17] text-[#F3EEE4] font-['Tajawal'] font-bold text-lg rounded-md hover:bg-[#AD8A4E] transition disabled:opacity-60"
             >
               {loading ? 'جاري الإنشاء...' : 'إنشاء حساب'}
             </button>
@@ -206,7 +208,7 @@ export default function SignupPage() {
           )}
 
           <p className="mt-8 text-sm font-['Tajawal'] text-[#4A473F]">
-            لديك حساب بالفعل؟ <a href="/login" className="text-[#AD8A4E] font-medium hover:underline">تسجيل الدخول</a>
+            لديك حساب بالفعل؟ <a href="/login" className="text-[#AD8A4E] font-bold hover:underline">تسجيل الدخول</a>
           </p>
         </div>
       </div>

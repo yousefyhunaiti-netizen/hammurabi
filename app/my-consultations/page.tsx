@@ -6,7 +6,8 @@ import { createClient } from '../lib/supabase'
 
 type Consultation = {
   id: number
-  lawyer_id: number
+  lawyer_id: number | null
+  firm_id: number | null
   question: string
   status: string
   answer: string | null
@@ -17,6 +18,13 @@ type Consultation = {
 type Lawyer = {
   id: number
   full_name: string
+  firm_id: number | null
+}
+
+type Firm = {
+  id: number
+  firm_name: string
+  show_lawyer_names: boolean | null
 }
 
 export default function MyConsultationsPage() {
@@ -27,6 +35,7 @@ export default function MyConsultationsPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
+  const [firms, setFirms] = useState<Firm[]>([])
   const [payingId, setPayingId] = useState<number | null>(null)
 
   const supabase = createClient()
@@ -70,17 +79,22 @@ export default function MyConsultationsPage() {
       const consultationsData = consultResult.data || []
       setConsultations(consultationsData)
 
-      const lawyerIds = consultationsData.map(function (c: Consultation) {
-        return c.lawyer_id
-      })
+      const lawyerIds = consultationsData.map(function (c: Consultation) { return c.lawyer_id }).filter(Boolean)
+      const directFirmIds = consultationsData.map(function (c: Consultation) { return c.firm_id }).filter(Boolean)
 
+      let lawyersData: Lawyer[] = []
       if (lawyerIds.length > 0) {
-        const lawyersResult = await supabase
-          .from('lawyers')
-          .select('id, full_name')
-          .in('id', lawyerIds)
+        const lawyersResult = await supabase.from('lawyers').select('id, full_name, firm_id').in('id', lawyerIds)
+        lawyersData = lawyersResult.data || []
+        setLawyers(lawyersData)
+      }
 
-        setLawyers(lawyersResult.data || [])
+      const firmIdsFromLawyers = lawyersData.map(function (l) { return l.firm_id }).filter(Boolean)
+      const allFirmIds = Array.from(new Set(directFirmIds.concat(firmIdsFromLawyers)))
+
+      if (allFirmIds.length > 0) {
+        const firmsResult = await supabase.from('firms').select('id, firm_name, show_lawyer_names').in('id', allFirmIds)
+        setFirms(firmsResult.data || [])
       }
 
       setLoading(false)
@@ -100,9 +114,35 @@ export default function MyConsultationsPage() {
     setMenuOpen(!menuOpen)
   }
 
-  function getLawyerName(lawyerId: number) {
-    const found = lawyers.find(function (l) { return l.id === lawyerId })
-    return found ? found.full_name : ''
+  function getFirm(firmId: number | null) {
+    if (!firmId) return null
+    return firms.find(function (f) { return f.id === firmId }) || null
+  }
+
+  function getAttributionLabel(c: Consultation) {
+    if (c.lawyer_id) {
+      const lawyer = lawyers.find(function (l) { return l.id === c.lawyer_id })
+      if (!lawyer) return ''
+
+      if (lawyer.firm_id) {
+        const firm = getFirm(lawyer.firm_id)
+        if (firm) {
+          if (firm.show_lawyer_names) {
+            return firm.firm_name + ' — ' + lawyer.full_name
+          }
+          return firm.firm_name
+        }
+      }
+
+      return lawyer.full_name
+    }
+
+    if (c.firm_id) {
+      const firm = getFirm(c.firm_id)
+      return firm ? firm.firm_name + ' (بانتظار تعيين محامٍ)' : ''
+    }
+
+    return ''
   }
 
   function getStatusLabel(status: string) {
@@ -139,10 +179,10 @@ export default function MyConsultationsPage() {
   }
 
   function renderConsultationCard(c: Consultation) {
-    const lawyerName = getLawyerName(c.lawyer_id)
+    const attributionLabel = getAttributionLabel(c)
     const statusLabel = getStatusLabel(c.status)
     const statusColorClass = "px-3 py-1 rounded-full text-xs font-['Tajawal'] " + getStatusColor(c.status)
-    const meetingLink = '/lawyers/' + c.lawyer_id
+    const meetingLink = c.lawyer_id ? '/lawyers/' + c.lawyer_id : '#'
     const payButtonText = payingId === c.id ? 'جاري الدفع...' : 'ادفع ' + c.fee + ' د.أ لعرض الإجابة'
 
     function payClick() {
@@ -152,7 +192,7 @@ export default function MyConsultationsPage() {
     return (
       <div key={c.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6">
         <div className="flex justify-between items-start mb-3">
-          <h3 className="font-['Tajawal'] font-bold text-[#1B1A17]">{lawyerName}</h3>
+          <h3 className="font-['Tajawal'] font-bold text-[#1B1A17]">{attributionLabel}</h3>
           <span className={statusColorClass}>{statusLabel}</span>
         </div>
 
@@ -164,7 +204,7 @@ export default function MyConsultationsPage() {
           </p>
         )}
 
-        {c.status === 'needs_meeting' && (
+        {c.status === 'needs_meeting' && c.lawyer_id && (
           <a href={meetingLink} className="inline-block px-4 py-2 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-sm">
             احجز موعداً مع المحامي
           </a>
@@ -183,7 +223,7 @@ export default function MyConsultationsPage() {
 
         {c.status === 'paid' && (
           <div className="bg-[#F3EEE4] rounded-md p-4">
-            <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-2">إجابة المحامي:</p>
+            <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-2">الإجابة:</p>
             <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{c.answer}</p>
           </div>
         )}
@@ -217,11 +257,19 @@ export default function MyConsultationsPage() {
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
             <div className="flex gap-5 items-center">
-              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              {!isLawyerAccount && (
+                <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              )}
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
               {isLawyerAccount && (
                 <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
               )}
 
               <div className="relative">

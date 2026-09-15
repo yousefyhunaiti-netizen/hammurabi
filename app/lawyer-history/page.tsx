@@ -29,11 +29,15 @@ export default function LawyerHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [lawyerId, setLawyerId] = useState<number | null>(null)
   const [notAllowed, setNotAllowed] = useState(false)
+  const [notSubscribed, setNotSubscribed] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [customerNames, setCustomerNames] = useState<CustomerName[]>([])
   const [tab, setTab] = useState('appointments')
   const [search, setSearch] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
+  const [dayFilter, setDayFilter] = useState('')
 
   const supabase = createClient()
 
@@ -47,10 +51,16 @@ export default function LawyerHistoryPage() {
         return
       }
 
-      const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userResult.data.user.id).maybeSingle()
 
       if (!lawyerResult.data) {
         setNotAllowed(true)
+        setLoading(false)
+        return
+      }
+
+      if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
+        setNotSubscribed(true)
         setLoading(false)
         return
       }
@@ -91,17 +101,39 @@ export default function LawyerHistoryPage() {
     loadData()
   }, [])
 
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setMenuOpen(false)
+  }
+
+  function toggleMenu() {
+    setMenuOpen(!menuOpen)
+  }
+
   function getCustomerName(userId: string) {
     const found = customerNames.find(function (c) { return c.user_id === userId })
     return found ? found.full_name : 'عميل'
   }
 
+  function matchesDateFilter(dateStr: string) {
+    if (!monthFilter) return true
+    const datePart = dateStr.split('T')[0]
+    if (!datePart.startsWith(monthFilter)) return false
+    if (dayFilter) {
+      const dayOfMonth = String(Number(datePart.split('-')[2]))
+      if (dayOfMonth !== dayFilter) return false
+    }
+    return true
+  }
+
   const filteredAppointments = appointments.filter(function (a) {
+    if (!matchesDateFilter(a.appointment_date)) return false
     if (!search.trim()) return true
     return getCustomerName(a.customer_id).toLowerCase().indexOf(search.toLowerCase()) !== -1
   })
 
   const filteredConsultations = consultations.filter(function (c) {
+    if (!matchesDateFilter(c.created_at)) return false
     if (!search.trim()) return true
     const nameMatch = getCustomerName(c.customer_id).toLowerCase().indexOf(search.toLowerCase()) !== -1
     const questionMatch = c.question.toLowerCase().indexOf(search.toLowerCase()) !== -1
@@ -148,13 +180,47 @@ export default function LawyerHistoryPage() {
     )
   }
 
+  if (notSubscribed) {
+    return (
+      <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
+        <div className="text-center max-w-md">
+          <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
+            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى السجل</h1>
+            <a href="/subscription" className="inline-block mt-4 px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">عرض خطط الاشتراك</a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-2xl mx-auto">
-          <h1 className="font-['Amiri'] text-4xl mb-2">السجل</h1>
-          <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
-        </div>
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+            <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
+            <div className="flex gap-5 items-center">
+              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
+              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
+              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
+              <div className="relative">
+                <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
+                </button>
+                {menuOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
+                    <a href="/lawyer-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>
+                    <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">تسجيل الخروج</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">السجل</h1>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">مرجعك الكامل لكل موعد واستشارة سابقة تمت عبر حمورابي</p>        </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-10">
@@ -178,8 +244,26 @@ export default function LawyerHistoryPage() {
           value={search}
           onChange={function (e) { setSearch(e.target.value) }}
           placeholder="ابحث بالاسم..."
-          className="w-full px-3 py-2 mb-4 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+          className="w-full px-3 py-2 mb-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
         />
+
+        <div className="flex gap-2 mb-4">
+          <input
+            type="month"
+            value={monthFilter}
+            onChange={function (e) { setMonthFilter(e.target.value) }}
+            className="flex-1 px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+          />
+          <input
+            type="number"
+            value={dayFilter}
+            onChange={function (e) { setDayFilter(e.target.value) }}
+            placeholder="يوم (اختياري)"
+            min="1"
+            max="31"
+            className="w-32 px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+          />
+        </div>
 
         {tab === 'appointments' && (
           <div>

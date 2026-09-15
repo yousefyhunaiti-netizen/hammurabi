@@ -15,14 +15,14 @@ export default function ForgotPasswordPage() {
     setMessage('')
     setLoading(true)
 
-    const redirectUrl = window.location.origin + '/reset-password'
-
-    const result = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectUrl })
+    const result = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/reset-password',
+    })
 
     setLoading(false)
 
     if (result.error) {
-      setMessage('حدث خطأ، حاول مرة أخرى')
+      setMessage('خطأ: ' + result.error.message)
       return
     }
 
@@ -30,36 +30,60 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
-      <div className="w-full max-w-sm bg-white border border-[#D8D2C4] rounded-lg p-8">
-        <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-2">نسيت كلمة المرور؟</h1>
-        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-6">أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين كلمة المرور</p>
+    <div dir="rtl" className="min-h-screen flex flex-col md:flex-row">
+      <div className="relative md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
+        <img
+          src="/scale.png"
+          alt=""
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] opacity-[0.07] pointer-events-none object-contain"
+        />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            value={email}
-            onChange={function (e) { setEmail(e.target.value) }}
-            required
-            className="w-full px-4 py-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
-            placeholder="you@example.com"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] font-['Tajawal'] font-medium rounded-md hover:bg-[#AD8A4E] transition disabled:opacity-60"
-          >
-            {loading ? 'جاري الإرسال...' : 'إرسال رابط إعادة التعيين'}
-          </button>
-        </form>
+        <div className="relative z-10 max-w-md mx-auto md:mx-0">
+          <img src="/logo.png" alt="حمورابي" className="h-24 md:h-28 w-auto mb-3" />
+          <div className="w-20 h-[3px] shimmer-line mb-6"></div>
+          <p className="font-['Tajawal'] text-sm md:text-base text-[#D8D2C4] leading-relaxed">
+            بوابتك المتكاملة لإدارة منظومة العمل القانوني.
+          </p>
+        </div>
+      </div>
 
-        {message && (
-          <p className="mt-4 text-sm font-['Tajawal'] text-[#2F4538]">{message}</p>
-        )}
+      <div className="md:w-1/2 pattern-bg flex items-center justify-center px-6 py-16">
+        <div className="w-full max-w-sm">
+          <h2 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-1">نسيت كلمة المرور؟</h2>
+          <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-8">أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين كلمة المرور</p>
 
-        <p className="mt-6 text-sm font-['Tajawal'] text-[#4A473F]">
-          <a href="/login" className="text-[#AD8A4E] hover:underline">العودة لتسجيل الدخول</a>
-        </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block font-['Tajawal'] text-sm text-[#4A473F] mb-1.5">البريد الإلكتروني</label>
+              <input
+                type="email"
+                value={email}
+                onChange={function (e) { setEmail(e.target.value) }}
+                required
+                className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
+                placeholder="you@example.com"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-[#1B1A17] text-[#F3EEE4] font-['Tajawal'] font-bold text-lg rounded-md hover:bg-[#AD8A4E] transition disabled:opacity-60"
+            >
+              {loading ? 'جاري الإرسال...' : 'إرسال رابط إعادة التعيين'}
+            </button>
+          </form>
+
+          {message && (
+            <p className={"mt-5 text-sm font-['Tajawal'] " + (message.indexOf('خطأ') === 0 ? 'text-[#7A2E2E]' : 'text-[#2F4538]')}>
+              {message}
+            </p>
+          )}
+
+          <p className="mt-8 text-sm font-['Tajawal'] text-[#4A473F]">
+            تذكرت كلمة المرور؟ <a href="/login" className="text-[#AD8A4E] font-bold hover:underline">تسجيل الدخول</a>
+          </p>
+        </div>
       </div>
     </div>
   )

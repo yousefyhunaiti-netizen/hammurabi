@@ -17,6 +17,7 @@ type AppEvent = {
   time_slot: string
   status: string
   consultation_type: string | null
+  meeting_link: string | null
 }
 
 type CombinedEvent = {
@@ -33,12 +34,14 @@ export default function LawyerCalendarPage() {
   const [loading, setLoading] = useState(true)
   const [lawyerId, setLawyerId] = useState<number | null>(null)
   const [notAllowed, setNotAllowed] = useState(false)
+  const [notSubscribed, setNotSubscribed] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [personalEvents, setPersonalEvents] = useState<PersonalEvent[]>([])
   const [appEvents, setAppEvents] = useState<AppEvent[]>([])
 
   const [viewMonth, setViewMonth] = useState(new Date().getMonth())
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
-  const [selectedDay, setSelectedDay] = useState('')
+  const [modalDay, setModalDay] = useState('')
 
   const [title, setTitle] = useState('')
   const [eventDate, setEventDate] = useState('')
@@ -65,10 +68,16 @@ export default function LawyerCalendarPage() {
         return
       }
 
-      const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userResult.data.user.id).maybeSingle()
 
       if (!lawyerResult.data) {
         setNotAllowed(true)
+        setLoading(false)
+        return
+      }
+
+      if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
+        setNotSubscribed(true)
         setLoading(false)
         return
       }
@@ -80,6 +89,15 @@ export default function LawyerCalendarPage() {
 
     loadData()
   }, [])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setMenuOpen(false)
+  }
+
+  function toggleMenu() {
+    setMenuOpen(!menuOpen)
+  }
 
   async function handleAddEvent() {
     if (!title.trim() || !eventDate || !lawyerId) return
@@ -132,7 +150,7 @@ export default function LawyerCalendarPage() {
     }
     setViewMonth(newMonth)
     setViewYear(newYear)
-    setSelectedDay('')
+    setModalDay('')
   }
 
   function buildCalendarGrid() {
@@ -162,7 +180,7 @@ export default function LawyerCalendarPage() {
 
   function dayClick(day: number) {
     const dateStr = formatDateStr(viewYear, viewMonth, day)
-    setSelectedDay(dateStr)
+    setModalDay(dateStr)
     setEventDate(dateStr)
   }
 
@@ -177,7 +195,6 @@ export default function LawyerCalendarPage() {
     const dayEvents = getDayEvents(dateStr)
     const hasPersonal = dayEvents.personal.length > 0
     const hasApp = dayEvents.app.length > 0
-    const isSelected = selectedDay === dateStr
 
     function clickHandler() {
       dayClick(day)
@@ -187,16 +204,13 @@ export default function LawyerCalendarPage() {
       <button
         key={key}
         onClick={clickHandler}
-        className={
-          "aspect-square rounded-md flex flex-col items-center justify-center relative font-['Tajawal'] text-sm transition " +
-          (isSelected ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white hover:bg-[#F3EEE4] text-[#1B1A17] border border-[#D8D2C4]')
-        }
+        className="aspect-square rounded-md flex flex-col items-center justify-center relative font-['Tajawal'] text-sm transition bg-white border border-[#D8D2C4] text-[#1B1A17] hover:bg-[#F3EEE4]"
       >
         <span>{day}</span>
         {(hasPersonal || hasApp) && (
           <div className="flex gap-1 mt-1">
-            {hasApp && <span className="w-1.5 h-1.5 rounded-full bg-[#2F4538]"></span>}
-            {hasPersonal && <span className="w-1.5 h-1.5 rounded-full bg-[#AD8A4E]"></span>}
+            {hasApp && <span className="w-2 h-2 rounded-full bg-[#2F4538]"></span>}
+            {hasPersonal && <span className="w-2 h-2 rounded-full bg-[#AD8A4E]"></span>}
           </div>
         )}
       </button>
@@ -233,7 +247,6 @@ export default function LawyerCalendarPage() {
   }
 
   const combinedList = buildCombinedList()
-  const selectedDayEvents = selectedDay ? getDayEvents(selectedDay) : null
 
   function renderCombinedRow(item: CombinedEvent, index: number) {
     const isApp = item.source === 'app'
@@ -241,6 +254,75 @@ export default function LawyerCalendarPage() {
       <div key={index} className={"flex justify-between items-center rounded-md p-3 mb-2 " + (isApp ? 'bg-[#2F4538] text-white' : 'bg-white border border-[#D8D2C4]')}>
         <p className={"font-['Tajawal'] text-sm " + (isApp ? 'text-white' : 'text-[#1B1A17]')}>{item.title}</p>
         <p className={"font-['Tajawal'] text-xs " + (isApp ? 'text-[#D8D2C4]' : 'text-[#4A473F]')}>{item.date} - {item.time}</p>
+      </div>
+    )
+  }
+
+  function renderDayModal() {
+    if (!modalDay) return null
+
+    const dayEvents = getDayEvents(modalDay)
+
+    function closeModal() {
+      setModalDay('')
+    }
+
+    function stopPropagation(e: React.MouseEvent) {
+      e.stopPropagation()
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4" onClick={closeModal}>
+        <div className="bg-white rounded-lg max-w-lg w-full max-h-[85vh] overflow-y-auto p-6" onClick={stopPropagation}>
+          <div className="flex justify-between items-center mb-5">
+            <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">{modalDay}</h2>
+            <button type="button" onClick={closeModal} className="cursor-pointer font-['Tajawal'] text-[#4A473F] text-2xl leading-none">×</button>
+          </div>
+
+          {dayEvents.app.length === 0 && dayEvents.personal.length === 0 && (
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4">لا توجد مواعيد في هذا اليوم</p>
+          )}
+
+          {dayEvents.app.length > 0 && (
+            <div className="mb-5">
+              <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">مواعيد التطبيق</h3>
+              {dayEvents.app.map(function (a) {
+                const typeLabel = a.consultation_type === 'video' ? 'عبر الفيديو' : 'حضوري'
+                return (
+                  <div key={a.id} className="bg-[#2F4538] text-white rounded-md p-4 mb-2">
+                    <p className="font-['Tajawal'] font-bold text-sm mb-1">{typeLabel} - {a.time_slot}</p>
+                    {a.consultation_type === 'video' && a.meeting_link && (
+                      <a href={a.meeting_link} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-xs text-[#D8D2C4] underline break-all">
+                        {a.meeting_link}
+                      </a>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {dayEvents.personal.length > 0 && (
+            <div>
+              <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">مواعيد شخصية</h3>
+              {dayEvents.personal.map(function (p) {
+                function deleteClick() {
+                  handleDeleteEvent(p.id)
+                }
+                return (
+                  <div key={p.id} className="flex justify-between items-start bg-[#F3EEE4] rounded-md p-4 mb-2">
+                    <div>
+                      <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{p.title}</p>
+                      <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">{p.time_slot}</p>
+                      {p.notes && <p className="font-['Tajawal'] text-xs text-[#4A473F]">{p.notes}</p>}
+                    </div>
+                    <button type="button" onClick={deleteClick} className="cursor-pointer font-['Tajawal'] text-xs text-[#7A2E2E] flex-shrink-0">حذف</button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -264,11 +346,59 @@ export default function LawyerCalendarPage() {
     )
   }
 
+  if (notSubscribed) {
+    return (
+      <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
+        <div className="text-center max-w-md">
+          <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
+            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى الأجندة</h1>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed mb-6">
+              يرجى الاشتراك في إحدى الباقات المتاحة أولاً.
+            </p>
+            <a href="/subscription" className="inline-block px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">
+              عرض خطط الاشتراك
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-2xl mx-auto">
-          <h1 className="font-['Amiri'] text-4xl mb-2">أجندتي</h1>
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+            <a href="/">
+              <img src="/logo.png" alt="حمورابي" className="h-12 w-auto" />
+            </a>
+            <div className="flex gap-5 items-center">
+              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
+              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
+              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
+              <div className="relative">
+                <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" />
+                  </svg>
+                </button>
+                {menuOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
+                    <a href="/lawyer-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">
+                      معلوماتي الشخصية
+                    </a>
+                    <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">
+                      تسجيل الخروج
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">أجندتي</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
         </div>
       </div>
@@ -311,40 +441,6 @@ export default function LawyerCalendarPage() {
           </div>
         </div>
 
-        {selectedDay && selectedDayEvents && (
-          <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-6">
-            <h2 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-3">{selectedDay}</h2>
-
-            {selectedDayEvents.app.length === 0 && selectedDayEvents.personal.length === 0 && (
-              <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-3">لا توجد مواعيد في هذا اليوم</p>
-            )}
-
-            {selectedDayEvents.app.map(function (a) {
-              const typeLabel = a.consultation_type === 'video' ? 'موعد (فيديو)' : 'موعد (حضوري)'
-              return (
-                <div key={a.id} className="bg-[#2F4538] text-white rounded-md p-3 mb-2">
-                  <p className="font-['Tajawal'] text-sm">{typeLabel} - {a.time_slot}</p>
-                </div>
-              )
-            })}
-
-            {selectedDayEvents.personal.map(function (p) {
-              function deleteClick() {
-                handleDeleteEvent(p.id)
-              }
-              return (
-                <div key={p.id} className="flex justify-between items-center bg-[#F3EEE4] rounded-md p-3 mb-2">
-                  <div>
-                    <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{p.title}</p>
-                    <p className="font-['Tajawal'] text-xs text-[#4A473F]">{p.time_slot}</p>
-                  </div>
-                  <button onClick={deleteClick} className="font-['Tajawal'] text-xs text-[#7A2E2E]">حذف</button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <h2 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-3">إضافة موعد شخصي</h2>
           <div className="space-y-3">
@@ -368,6 +464,8 @@ export default function LawyerCalendarPage() {
           {combinedList.map(renderCombinedRow)}
         </div>
       </div>
+
+      {renderDayModal()}
     </div>
   )
 }

@@ -19,29 +19,54 @@ export default function LoginPage() {
     setLoading(true)
 
     const result = await supabase.auth.signInWithPassword({ email: email, password: password })
-    setLoading(false)
 
     if (result.error) {
+      setLoading(false)
       setMessage('خطأ: البريد الإلكتروني أو كلمة المرور غير صحيحة')
       return
     }
 
-    setMessage('تم تسجيل الدخول بنجاح')
+    const user = result.data.user
+
+    const customerResult = await supabase.from('customers').select('id').eq('user_id', user.id).maybeSingle()
+    if (customerResult.data) {
+      setLoading(false)
+      router.push('/lawyers')
+      return
+    }
+
+    const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+    if (lawyerResult.data) {
+      setLoading(false)
+      router.push('/lawyer-tools')
+      return
+    }
+
+    const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+    if (firmResult.data) {
+      setLoading(false)
+      router.push('/firm-dashboard')
+      return
+    }
+
+    setLoading(false)
     router.push('/')
   }
 
   return (
     <div dir="rtl" className="min-h-screen flex flex-col md:flex-row">
       <div className="relative md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-[0.07] pointer-events-none"
-          style={{ backgroundImage: 'repeating-linear-gradient(180deg, transparent, transparent 38px, #AD8A4E 39px)' }}
+        <img
+          src="/scale.png"
+          alt=""
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] opacity-[0.07] pointer-events-none object-contain"
         />
+
         <div className="relative z-10 max-w-md mx-auto md:mx-0">
-          <h1 className="font-['Amiri'] text-6xl md:text-7xl leading-none mb-4">حمورابي</h1>
-          <div className="w-16 h-[2px] bg-[#AD8A4E] mb-6"></div>
-          <p className="font-['Tajawal'] text-lg text-[#D8D2C4] leading-relaxed">
-            منصتك للوصول إلى محامين موثوقين في الأردن، بثقة ووضوح، كما رست القوانين الأولى على الحجر.
+          <img src="/logo.png" alt="حمورابي" className="h-24 md:h-28 w-auto mb-3" />
+          <div className="w-20 h-[3px] shimmer-line mb-6"></div>
+          <p className="font-['Tajawal'] text-sm md:text-base text-[#D8D2C4] whitespace-nowrap">
+            ما كان يُنقش على الحجر، أصبح اليوم في متناول يدك
           </p>
         </div>
       </div>
@@ -81,7 +106,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] font-['Tajawal'] font-medium rounded-md hover:bg-[#AD8A4E] transition disabled:opacity-60"
+              className="w-full py-3.5 bg-[#1B1A17] text-[#F3EEE4] font-['Tajawal'] font-bold text-lg rounded-md hover:bg-[#AD8A4E] transition disabled:opacity-60"
             >
               {loading ? 'جاري الدخول...' : 'دخول'}
             </button>

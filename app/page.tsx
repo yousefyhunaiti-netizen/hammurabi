@@ -84,23 +84,31 @@ export default function HomePage() {
             <img src="/logo.png" alt="حمورابي" className="h-14 md:h-16 w-auto" />
           </a>
 
-          <div className="hidden lg:flex gap-6 items-center">
-            <a href="/lawyers" className={navLinkClass}>دليل المحامين</a>
-            <a href="/legal-articles" className={navLinkClass}>مقالات قانونية</a>
-            <a href="/ai-assistant" className={navLinkClass}>مساعد ذكي</a>
-            {loggedIn && !isLawyerAccount && !isFirmAccount && (
-              <a href="/my-appointments" className={navLinkClass}>مواعيدي</a>
-            )}
-            {loggedIn && !isLawyerAccount && !isFirmAccount && (
-              <a href="/my-consultations" className={navLinkClass}>استشاراتي</a>
-            )}
-            {isLawyerAccount && (
-              <a href="/lawyer-tools" className={navLinkClass}>أدواتي</a>
-            )}
-            {isLawyerAccount && (
-              <a href="/lawyer-history" className={navLinkClass}>السجل</a>
-            )}
-          </div>
+          {loggedIn && (
+            <div className="hidden lg:flex gap-6 items-center">
+              <a href="/lawyers" className={navLinkClass}>دليل المحامين</a>
+              <a href="/legal-articles" className={navLinkClass}>مقالات قانونية</a>
+              <a href="/ai-assistant" className={navLinkClass}>مساعد ذكي</a>
+              {!isLawyerAccount && !isFirmAccount && (
+                <a href="/my-appointments" className={navLinkClass}>مواعيدي</a>
+              )}
+              {!isLawyerAccount && !isFirmAccount && (
+                <a href="/my-consultations" className={navLinkClass}>استشاراتي</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/lawyer-tools" className={navLinkClass}>أدواتي</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/lawyer-messages" className={navLinkClass}>الرسائل</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/community" className={navLinkClass}>المجتمع</a>
+              )}
+              {isLawyerAccount && (
+                <a href="/lawyer-history" className={navLinkClass}>السجل</a>
+              )}
+            </div>
+          )}
 
           {!checkingAuth && !loggedIn && (
             <div className="flex gap-3">
@@ -147,12 +155,12 @@ export default function HomePage() {
         <div className="relative max-w-6xl mx-auto px-6 py-16 md:py-24 overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
             <div>
-              <h2 className="font-['Amiri'] text-4xl md:text-5xl leading-tight mb-6">
+              <h2 className="font-['Tajawal'] font-bold text-4xl md:text-5xl leading-tight mb-6">
                 قضيتك تبدأ مع المحامي المناسب.
               </h2>
               <div className="w-20 h-[2px] shimmer-line mb-6"></div>
               <p className="font-['Tajawal'] text-lg text-[#D8D2C4] mb-10 leading-relaxed">
-                من التخصص إلى الموقع، حمورابي يساعدك على تضييق الخيارات والوصول إلى المحامي الذي يناسب احتياجك القانوني.
+                حمورابي يختصر المسافات؛ بيئة مريحة تدير العمل القانوني وتجعل الوصول إليه أسرع وأسهل
               </p>
               <div className="flex flex-wrap gap-4">
                 <a href="/lawyers" className={heroCtaClass}>تصفح المحامين</a>
@@ -161,7 +169,7 @@ export default function HomePage() {
             </div>
 
             <div className="flex justify-center">
-              <img src="/scale.png" alt="ميزان العدالة" className="w-64 h-64 md:w-96 md:h-96 object-contain" />
+              <img src="/scale.png" alt="ميزان العدالة" className="w-full max-w-md md:max-w-2xl lg:max-w-3xl object-contain" />
             </div>
           </div>
         </div>
@@ -169,16 +177,16 @@ export default function HomePage() {
         <div className="border-t border-[#3A382F]">
           <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-3 gap-6 text-center">
             <div>
-              <p className="font-['Amiri'] text-5xl md:text-6xl text-[#AD8A4E] font-bold">{lawyerCount}+</p>
+              <p className="font-['Tajawal'] font-bold text-5xl md:text-6xl text-[#AD8A4E]">{lawyerCount}+</p>
               <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">محامٍ موثوق</p>
             </div>
             <div>
-              <p className="font-['Amiri'] text-5xl md:text-6xl text-[#AD8A4E] font-bold">{specialtyCount}+</p>
+              <p className="font-['Tajawal'] font-bold text-5xl md:text-6xl text-[#AD8A4E]">{specialtyCount}+</p>
               <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">تخصص قانوني</p>
             </div>
             <div>
-              <p className="font-['Amiri'] text-5xl md:text-6xl text-[#AD8A4E] font-bold">{cityCount}+</p>
-              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">مدينة أردنية</p>
+              <p className="font-['Tajawal'] font-bold text-5xl md:text-6xl text-[#AD8A4E]">{cityCount}+</p>
+              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">محافظة أردنية</p>
             </div>
           </div>
         </div>
