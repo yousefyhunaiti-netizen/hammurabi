@@ -191,13 +191,14 @@ export default function LawyerCalendarPage() {
       return <div key={key} className="aspect-square"></div>
     }
 
-    const dateStr = formatDateStr(viewYear, viewMonth, day)
+    const dayValue: number = day
+    const dateStr = formatDateStr(viewYear, viewMonth, dayValue)
     const dayEvents = getDayEvents(dateStr)
     const hasPersonal = dayEvents.personal.length > 0
     const hasApp = dayEvents.app.length > 0
 
     function clickHandler() {
-      dayClick(day)
+      dayClick(dayValue)
     }
 
     return (

@@ -223,6 +223,7 @@ export default function LawyerLibraryPage() {
 
   function renderModal() {
     if (!openItem) return null
+    const item = openItem
 
     function closeModal() {
       setOpenItem(null)
@@ -233,47 +234,47 @@ export default function LawyerLibraryPage() {
     }
 
     function deleteClick() {
-      handleDeleteItem(openItem.id)
+      handleDeleteItem(item.id)
     }
 
     function copyClick() {
-      handleCopy(openItem)
+      handleCopy(item)
     }
 
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4" onClick={closeModal}>
         <div className="bg-white rounded-lg max-w-lg w-full max-h-[85vh] overflow-y-auto p-6" onClick={stopPropagation}>
           <div className="flex justify-between items-start mb-3">
-            <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">{openItem.title}</h2>
+            <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">{item.title}</h2>
             <button onClick={closeModal} className="cursor-pointer text-[#4A473F] text-2xl leading-none">×</button>
           </div>
 
-          {openItem.specialty_id && (
-            <span className="inline-block px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full mb-3">{getSpecialtyName(openItem.specialty_id)}</span>
+          {item.specialty_id && (
+            <span className="inline-block px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full mb-3">{getSpecialtyName(item.specialty_id)}</span>
           )}
 
-          {openItem.summary && (
+          {item.summary && (
             <div className="bg-[#F3EEE4] rounded-md p-3 mb-3">
               <p className="font-['Tajawal'] text-xs font-bold text-[#AD8A4E] mb-1">الملخص</p>
-              <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{openItem.summary}</p>
+              <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{item.summary}</p>
             </div>
           )}
 
-          {openItem.content && <p className="font-['Tajawal'] text-sm text-[#4A473F] whitespace-pre-wrap mb-3">{openItem.content}</p>}
+          {item.content && <p className="font-['Tajawal'] text-sm text-[#4A473F] whitespace-pre-wrap mb-3">{item.content}</p>}
 
-          {openItem.link && (
-            <a href={openItem.link} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-2">فتح الرابط</a>
+          {item.link && (
+            <a href={item.link} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-2">فتح الرابط</a>
           )}
 
-          {openItem.file_url && (
-            <a href={openItem.file_url} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-3">عرض الملف المرفق</a>
+          {item.file_url && (
+            <a href={item.file_url} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-3">عرض الملف المرفق</a>
           )}
 
-          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">آخر تحديث: {new Date(openItem.created_at).toLocaleDateString('en-GB')}</p>
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">آخر تحديث: {new Date(item.created_at).toLocaleDateString('en-GB')}</p>
 
           <div className="flex gap-2">
             <button onClick={copyClick} className="cursor-pointer flex-1 py-2 bg-[#F3EEE4] text-[#4A473F] rounded-md font-['Tajawal'] text-sm">
-              {copiedId === openItem.id ? '✓ تم النسخ' : '📋 نسخ النص'}
+              {copiedId === item.id ? '✓ تم النسخ' : '📋 نسخ النص'}
             </button>
             <button onClick={deleteClick} className="cursor-pointer flex-1 py-2 bg-[#7A2E2E] text-white rounded-md font-['Tajawal'] text-sm">حذف</button>
           </div>
@@ -326,7 +327,11 @@ export default function LawyerLibraryPage() {
               <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
               <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
-              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
+              <a href="/lawyer-messages" className="relative hover:text-[#AD8A4E] transition">
+                <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                </svg>
+              </a>
               <div className="relative">
                 <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                   <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
