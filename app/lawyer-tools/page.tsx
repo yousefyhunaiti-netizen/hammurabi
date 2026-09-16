@@ -16,6 +16,7 @@ const toolGroups: ToolGroup[] = [
       { href: '/lawyer-cases', label: 'ملفات القضايا', desc: 'قائمة وكانبان لكل قضاياك مع الجلسات والمرفقات', icon: 'folder' },
       { href: '/lawyer-library', label: 'مكتبتي القانونية', desc: 'احفظ القوانين ولخّصها بالذكاء الاصطناعي', icon: 'book' },
       { href: '/wakalah', label: 'الوكالات', desc: 'ارفع وتابع وكالات عملائك', icon: 'signature' },
+      { href: '/trainee-board', label: 'أبحث عن متدرب', desc: 'انشر فرصة تدريب واعثر على المتدرب المناسب', icon: 'people' },
     ],
   },
   {
@@ -31,6 +32,7 @@ const toolGroups: ToolGroup[] = [
     groupLabel: 'المجتمع',
     tools: [
       { href: '/community', label: 'مجتمع المحامين', desc: 'شارك وتفاعل مع زملائك المحامين', icon: 'people' },
+      { href: '/lawyer-articles', label: 'مقالاتي القانونية', desc: 'اكتب مقالات يراها العملاء وابنِ سمعتك المهنية', icon: 'note' },
       { href: '/lawyer-messages', label: 'الرسائل', desc: 'تواصل مباشر مع محامين آخرين', icon: 'chat' },
     ],
   },

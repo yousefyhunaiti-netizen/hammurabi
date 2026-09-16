@@ -225,6 +225,13 @@ export default function HomePage() {
         </div>
       </div>
 
+      <div className="bg-[#F3EEE4] border-y border-[#D8D2C4] py-10 text-center">
+        <a href="/trainee-board" className="inline-block font-['Tajawal'] text-[#1B1A17] hover:text-[#AD8A4E] transition">
+          <span className="font-bold text-lg">هل أنت متدرب تبحث عن محامٍ؟</span>
+          <span className="block text-sm text-[#4A473F] mt-1">تصفّح لوحة فرص التدريب المتاحة الآن ←</span>
+        </a>
+      </div>
+
       <div className="bg-[#1B1A17] text-[#D8D2C4] py-8 text-center">
         <p className="font-['Tajawal'] text-sm">© حمورابي 2026 — جميع الحقوق محفوظة</p>
       </div>

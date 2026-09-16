@@ -6,7 +6,8 @@ import { createClient } from '../lib/supabase'
 
 type Appointment = {
   id: number
-  lawyer_id: number
+  lawyer_id: number | null
+  firm_id: number | null
   appointment_date: string
   time_slot: string
   status: string
@@ -14,22 +15,30 @@ type Appointment = {
   meeting_link: string | null
 }
 
-type Lawyer = {
+type LawyerName = {
   id: number
   full_name: string
 }
 
-const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
-const monthNames = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+type FirmName = {
+  id: number
+  firm_name: string
+}
+
+function formatDateDisplay(dateStr: string) {
+  const parts = dateStr.split('-')
+  if (parts.length !== 3) return dateStr
+  return parts[2] + '/' + parts[1] + '/' + parts[0]
+}
 
 export default function MyAppointmentsPage() {
   const [loading, setLoading] = useState(true)
-  const [loggedIn, setLoggedIn] = useState(false)
-  const [infoLink, setInfoLink] = useState('')
-  const [isLawyerAccount, setIsLawyerAccount] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [lawyers, setLawyers] = useState<Lawyer[]>([])
+  const [lawyerNames, setLawyerNames] = useState<LawyerName[]>([])
+  const [firmNames, setFirmNames] = useState<FirmName[]>([])
+  const [notAllowed, setNotAllowed] = useState(false)
+  const [showCancelled, setShowCancelled] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [cancellingId, setCancellingId] = useState<number | null>(null)
 
   const supabase = createClient()
@@ -40,48 +49,42 @@ export default function MyAppointmentsPage() {
       const userResult = await supabase.auth.getUser()
 
       if (!userResult.data.user) {
-        setLoggedIn(false)
+        setNotAllowed(true)
         setLoading(false)
         return
       }
 
-      const user = userResult.data.user
-      setLoggedIn(true)
+      const lawyerCheck = await supabase.from('lawyers').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      if (lawyerCheck.data) {
+        router.push('/lawyer-calendar')
+        return
+      }
 
-      const customerResult = await supabase.from('customers').select('id').eq('user_id', user.id).maybeSingle()
-      if (customerResult.data) {
-        setInfoLink('/my-info')
-      } else {
-        const lawyerAcctResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
-        if (lawyerAcctResult.data) {
-          setInfoLink('/lawyer-info')
-          setIsLawyerAccount(true)
-        } else {
-          const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
-          if (firmResult.data) {
-            setInfoLink('/firm-info')
-          }
-        }
+      const firmCheck = await supabase.from('firms').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      if (firmCheck.data) {
+        router.push('/firm-dashboard')
+        return
       }
 
       const apptResult = await supabase
         .from('appointments')
         .select('*')
-        .eq('customer_id', user.id)
-        .neq('status', 'cancelled')
+        .eq('customer_id', userResult.data.user.id)
         .order('appointment_date', { ascending: true })
 
-      const apptData = apptResult.data || []
-      setAppointments(apptData)
+      const data = apptResult.data || []
+      setAppointments(data)
 
-      const lawyerIds = apptData.map(function (a: Appointment) { return a.lawyer_id })
-
+      const lawyerIds = Array.from(new Set(data.map(function (a: Appointment) { return a.lawyer_id }).filter(Boolean)))
       if (lawyerIds.length > 0) {
-        const lawyersResult = await supabase
-          .from('lawyers')
-          .select('id, full_name')
-          .in('id', lawyerIds)
-        setLawyers(lawyersResult.data || [])
+        const namesResult = await supabase.from('lawyers').select('id, full_name').in('id', lawyerIds)
+        setLawyerNames(namesResult.data || [])
+      }
+
+      const firmIds = Array.from(new Set(data.map(function (a: Appointment) { return a.firm_id }).filter(Boolean)))
+      if (firmIds.length > 0) {
+        const firmsResult = await supabase.from('firms').select('id, firm_name').in('id', firmIds)
+        setFirmNames(firmsResult.data || [])
       }
 
       setLoading(false)
@@ -100,63 +103,59 @@ export default function MyAppointmentsPage() {
     setMenuOpen(!menuOpen)
   }
 
-  function getLawyerName(lawyerId: number) {
-    const found = lawyers.find(function (l) { return l.id === lawyerId })
-    return found ? found.full_name : ''
-  }
-
-  function formatDate(dateStr: string) {
-    const parts = dateStr.split('-')
-    const dateObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
-    return dayNames[dateObj.getDay()] + ' ' + parts[2] + ' ' + monthNames[dateObj.getMonth()] + ' ' + parts[0]
-  }
-
   async function handleCancel(appointmentId: number) {
     setCancellingId(appointmentId)
     await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appointmentId)
-    setAppointments(appointments.filter(function (a) { return a.id !== appointmentId }))
+    setAppointments(appointments.map(function (a) {
+      if (a.id === appointmentId) return Object.assign({}, a, { status: 'cancelled' })
+      return a
+    }))
     setCancellingId(null)
   }
 
-  function renderAppointmentCard(appt: Appointment) {
-    const lawyerName = getLawyerName(appt.lawyer_id)
-    const isVideo = appt.consultation_type === 'video'
-    const typeLabel = isVideo ? 'عبر الفيديو' : 'حضوري'
+  function getLawyerName(id: number | null) {
+    if (!id) return ''
+    const found = lawyerNames.find(function (l) { return l.id === id })
+    return found ? found.full_name : ''
+  }
+
+  function getFirmName(id: number | null) {
+    if (!id) return ''
+    const found = firmNames.find(function (f) { return f.id === id })
+    return found ? found.firm_name : ''
+  }
+
+  const visibleAppointments = appointments.filter(function (a) {
+    if (showCancelled) return true
+    return a.status !== 'cancelled'
+  })
+
+  function renderAppointment(a: Appointment) {
+    const isCancelled = a.status === 'cancelled'
+    const typeLabel = a.consultation_type === 'video' ? 'عبر الفيديو' : 'حضوري'
+    const withWho = a.lawyer_id ? getLawyerName(a.lawyer_id) : getFirmName(a.firm_id)
 
     function cancelClick() {
-      handleCancel(appt.id)
+      handleCancel(a.id)
     }
 
     return (
-      <div key={appt.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-4">
-        <div className="flex justify-between items-start mb-3">
-          <h3 className="font-['Tajawal'] font-bold text-[#1B1A17]">{lawyerName}</h3>
-          <span className="px-3 py-1 rounded-full text-xs font-['Tajawal'] bg-[#F3EEE4] text-[#4A473F]">
-            {typeLabel}
-          </span>
+      <div key={a.id} className={"border rounded-lg p-5 mb-3 " + (isCancelled ? 'bg-[#F3EEE4] border-[#D8D2C4] opacity-70' : 'bg-white border-[#D8D2C4]')}>
+        <div className="flex justify-between items-start mb-2">
+          <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{withWho}</p>
+          {isCancelled && <span className="px-2 py-0.5 bg-[#7A2E2E] text-white text-xs font-['Tajawal'] rounded-full">ملغى</span>}
         </div>
-
-        <div className="flex items-center justify-between font-['Tajawal'] text-sm text-[#4A473F] mb-3">
-          <span>{formatDate(appt.appointment_date)}</span>
-          <span className="font-medium text-[#1B1A17]">{appt.time_slot}</span>
-        </div>
-
-        {isVideo && appt.meeting_link && (
-          <div className="bg-[#2F4538] rounded-md p-3 mb-3">
-            <p className="font-['Tajawal'] text-xs text-white mb-1">رابط الاجتماع:</p>
-            <a href={appt.meeting_link} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-xs text-white underline break-all">
-              {appt.meeting_link}
-            </a>
-          </div>
+        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">{formatDateDisplay(a.appointment_date)} - {a.time_slot} ({typeLabel})</p>
+        {!isCancelled && a.consultation_type === 'video' && a.meeting_link && (
+          <a href={a.meeting_link} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-sm text-[#AD8A4E] underline block mb-2">
+            رابط الاجتماع
+          </a>
         )}
-
-        <button
-          onClick={cancelClick}
-          disabled={cancellingId === appt.id}
-          className="w-full py-2 text-sm font-['Tajawal'] text-[#7A2E2E] hover:underline disabled:opacity-60"
-        >
-          {cancellingId === appt.id ? 'جاري الإلغاء...' : 'إلغاء الموعد'}
-        </button>
+        {!isCancelled && (
+          <button onClick={cancelClick} disabled={cancellingId === a.id} className="font-['Tajawal'] text-xs text-[#7A2E2E]">
+            {cancellingId === a.id ? 'جاري الإلغاء...' : 'إلغاء الموعد'}
+          </button>
+        )}
       </div>
     )
   }
@@ -169,7 +168,7 @@ export default function MyAppointmentsPage() {
     )
   }
 
-  if (!loggedIn) {
+  if (notAllowed) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center">
@@ -183,56 +182,44 @@ export default function MyAppointmentsPage() {
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
-            <a href="/" className="font-['Amiri'] text-xl">حمورابي</a>
+            <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
             <div className="flex gap-5 items-center">
               <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
-              {isLawyerAccount && (
-                <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
-              )}
-
               <div className="relative">
-                <button
-                  onClick={toggleMenu}
-                  className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition"
-                >
-                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" />
-                  </svg>
+                <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
                 </button>
-
                 {menuOpen && (
                   <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
-                    {infoLink && (
-                      <a href={infoLink} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">
-                        معلوماتي الشخصية
-                      </a>
-                    )}
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]"
-                    >
-                      تسجيل الخروج
-                    </button>
+                    <a href="/my-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>
+                    <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">تسجيل الخروج</button>
                   </div>
                 )}
               </div>
             </div>
           </div>
-          <h1 className="font-['Amiri'] text-4xl mb-2">مواعيدي</h1>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">مواعيدي</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-10">
-        {appointments.length === 0 && (
-          <p className="font-['Tajawal'] text-[#4A473F] text-center">لا توجد مواعيد بعد</p>
+      <div className="max-w-2xl mx-auto px-6 py-10">
+        <label className="flex items-center gap-2 font-['Tajawal'] text-sm text-[#4A473F] mb-6">
+          <input type="checkbox" checked={showCancelled} onChange={function (e) { setShowCancelled(e.target.checked) }} />
+          إظهار المواعيد الملغاة
+        </label>
+
+        {visibleAppointments.length === 0 && (
+          <p className="font-['Tajawal'] text-center text-[#4A473F]">لا توجد مواعيد</p>
         )}
 
-        {appointments.map(renderAppointmentCard)}
+        {visibleAppointments.map(renderAppointment)}
       </div>
     </div>
   )

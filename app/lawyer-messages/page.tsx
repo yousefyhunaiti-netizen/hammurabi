@@ -17,6 +17,13 @@ type LawyerOption = {
   full_name: string
 }
 
+type Announcement = {
+  id: number
+  subject: string
+  message: string
+  created_at: string
+}
+
 export default function LawyerMessagesPage() {
   const [loading, setLoading] = useState(true)
   const [myLawyerId, setMyLawyerId] = useState<number | null>(null)
@@ -24,7 +31,9 @@ export default function LawyerMessagesPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [allLawyers, setAllLawyers] = useState<LawyerOption[]>([])
   const [messages, setMessages] = useState<Message[]>([])
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [selectedPartner, setSelectedPartner] = useState<number | null>(null)
+  const [viewingAnnouncements, setViewingAnnouncements] = useState(false)
   const [search, setSearch] = useState('')
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -39,6 +48,11 @@ export default function LawyerMessagesPage() {
       .or('sender_lawyer_id.eq.' + id + ',recipient_lawyer_id.eq.' + id)
       .order('created_at', { ascending: true })
     setMessages(result.data || [])
+  }
+
+  async function loadAnnouncements() {
+    const result = await supabase.from('announcements').select('*').order('created_at', { ascending: false })
+    setAnnouncements(result.data || [])
   }
 
   useEffect(function () {
@@ -65,6 +79,7 @@ export default function LawyerMessagesPage() {
       setAllLawyers(lawyersResult.data || [])
 
       await loadMessages(lawyerResult.data.id)
+      await loadAnnouncements()
       setLoading(false)
     }
 
@@ -75,7 +90,7 @@ export default function LawyerMessagesPage() {
     if (threadEndRef.current) {
       threadEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [selectedPartner, messages])
+  }, [selectedPartner, viewingAnnouncements, messages])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -86,8 +101,15 @@ export default function LawyerMessagesPage() {
     setMenuOpen(!menuOpen)
   }
 
+  function openAnnouncements() {
+    setViewingAnnouncements(true)
+    setSelectedPartner(null)
+    setSearch('')
+  }
+
   async function handleSelectPartner(partnerId: number) {
     setSelectedPartner(partnerId)
+    setViewingAnnouncements(false)
     setSearch('')
 
     if (myLawyerId) {
@@ -188,7 +210,7 @@ export default function LawyerMessagesPage() {
   })
 
   function renderPartnerRow(partnerId: number) {
-    const isSelected = selectedPartner === partnerId
+    const isSelected = selectedPartner === partnerId && !viewingAnnouncements
     const lastMsg = getLastMessage(partnerId)
     const unreadCount = getUnreadCount(partnerId)
 
@@ -233,6 +255,18 @@ export default function LawyerMessagesPage() {
         <div className={"px-4 py-2 rounded-lg max-w-xs font-['Tajawal'] text-sm " + (isMine ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-[#F3EEE4] text-[#1B1A17]')}>
           <p>{m.body}</p>
           <p className={"text-[10px] mt-1 " + (isMine ? 'text-[#D8D2C4]' : 'text-[#4A473F]')}>{formatTime(m.created_at)}</p>
+        </div>
+      </div>
+    )
+  }
+
+  function renderAnnouncement(a: Announcement) {
+    return (
+      <div key={a.id} className="mb-2 flex justify-end">
+        <div className="px-4 py-3 rounded-lg max-w-sm font-['Tajawal'] text-sm bg-[#F0E6D2] text-[#1B1A17] border border-[#AD8A4E]">
+          <p className="font-bold text-xs text-[#AD8A4E] mb-1">📢 {a.subject}</p>
+          <p className="whitespace-pre-wrap">{a.message}</p>
+          <p className="text-[10px] mt-1 text-[#4A473F]">{formatTime(a.created_at)}</p>
         </div>
       </div>
     )
@@ -312,8 +346,22 @@ export default function LawyerMessagesPage() {
 
           {!search.trim() && (
             <div>
+              <button
+                onClick={openAnnouncements}
+                className={"w-full text-right px-4 py-3 rounded-md font-['Tajawal'] transition mb-2 border-2 " + (viewingAnnouncements ? 'bg-[#1B1A17] text-[#F3EEE4] border-[#AD8A4E]' : 'bg-white text-[#1B1A17] border-[#AD8A4E]')}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📢</span>
+                  <span className="text-sm font-bold">حمورابي</span>
+                  {announcements.length > 0 && (
+                    <span className="bg-[#AD8A4E] text-white text-xs rounded-full px-2 py-0.5 mr-auto">{announcements.length}</span>
+                  )}
+                </div>
+                <p className={"text-xs mt-0.5 " + (viewingAnnouncements ? 'text-[#D8D2C4]' : 'text-[#4A473F]')}>إعلانات وتحديثات المنصة</p>
+              </button>
+
               {conversationPartners.length === 0 && (
-                <p className="font-['Tajawal'] text-xs text-[#4A473F]">لا توجد محادثات بعد، ابحث عن محامٍ لبدء محادثة</p>
+                <p className="font-['Tajawal'] text-xs text-[#4A473F]">لا توجد محادثات أخرى بعد</p>
               )}
               {conversationPartners.map(renderPartnerRow)}
             </div>
@@ -321,11 +369,22 @@ export default function LawyerMessagesPage() {
         </div>
 
         <div className="md:col-span-2 bg-white border border-[#D8D2C4] rounded-lg p-5 flex flex-col" style={{ minHeight: '450px', maxHeight: '450px' }}>
-          {!selectedPartner && (
+          {!selectedPartner && !viewingAnnouncements && (
             <p className="font-['Tajawal'] text-center text-[#4A473F] m-auto">اختر محادثة أو ابحث عن محامٍ</p>
           )}
 
-          {selectedPartner && (
+          {viewingAnnouncements && (
+            <div className="flex flex-col h-full">
+              <p className="font-['Tajawal'] font-bold text-[#1B1A17] mb-4 pb-3 border-b border-[#D8D2C4]">📢 حمورابي</p>
+              <div className="flex-1 overflow-y-auto mb-4">
+                {announcements.length === 0 && <p className="font-['Tajawal'] text-sm text-[#4A473F] text-center">لا توجد إعلانات بعد</p>}
+                {announcements.map(renderAnnouncement)}
+                <div ref={threadEndRef} />
+              </div>
+            </div>
+          )}
+
+          {selectedPartner && !viewingAnnouncements && (
             <div className="flex flex-col h-full">
               <p className="font-['Tajawal'] font-bold text-[#1B1A17] mb-4 pb-3 border-b border-[#D8D2C4]">{getLawyerName(selectedPartner)}</p>
               <div className="flex-1 overflow-y-auto mb-4">

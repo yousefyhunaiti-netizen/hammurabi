@@ -6,33 +6,18 @@ import { createClient } from '../lib/supabase'
 
 type AccountInfo = {
   id: number
-  type: string
-  isApproved: boolean
-  currentTier: string | null
-  isFeatured: boolean
-  featuredUntil: string | null
-  specialtyId: number | null
-  isComped: boolean
+  is_approved: boolean | null
+  is_comped: boolean | null
+  is_active: boolean | null
+  subscription_tier: string | null
 }
-
-const individualTiers = [
-  { id: 'monthly', label: 'شهري', price: 20, totalLabel: '20 د.أ / شهرياً' },
-  { id: 'yearly', label: 'سنوي', price: 180, totalLabel: '180 د.أ / سنوياً (15 د.أ شهرياً)' },
-  { id: '5year', label: '5 سنوات', price: 300, totalLabel: '300 د.أ لمدة 5 سنوات (5 د.أ شهرياً)' },
-]
-
-const firmTiers = [
-  { id: 'monthly', label: 'شهري', price: 50, totalLabel: '50 د.أ / شهرياً' },
-  { id: 'yearly', label: 'سنوي', price: 450, totalLabel: '450 د.أ / سنوياً (37.5 د.أ شهرياً)' },
-  { id: '5year', label: '5 سنوات', price: 750, totalLabel: '750 د.أ لمدة 5 سنوات (12.5 د.أ شهرياً)' },
-]
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true)
+  const [accountType, setAccountType] = useState('')
   const [account, setAccount] = useState<AccountInfo | null>(null)
-  const [notEligible, setNotEligible] = useState(false)
-  const [featuredMessage, setFeaturedMessage] = useState('')
-  const [checkingFeatured, setCheckingFeatured] = useState(false)
+  const [notAllowed, setNotAllowed] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const supabase = createClient()
   const router = useRouter()
@@ -42,136 +27,62 @@ export default function SubscriptionPage() {
       const userResult = await supabase.auth.getUser()
 
       if (!userResult.data.user) {
-        setNotEligible(true)
+        setLoading(false)
+        setNotAllowed(true)
+        return
+      }
+
+      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier').eq('user_id', userResult.data.user.id).maybeSingle()
+
+      if (lawyerResult.data) {
+        setAccountType('lawyer')
+        setAccount(lawyerResult.data)
         setLoading(false)
         return
       }
 
-      const user = userResult.data.user
-
-      const lawyerResult = await supabase
-        .from('lawyers')
-        .select('id, is_approved, subscription_tier, firm_id, is_featured, featured_until, specialty_id, is_comped')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (lawyerResult.data && !lawyerResult.data.firm_id) {
-        setAccount({
-          id: lawyerResult.data.id,
-          type: 'lawyer',
-          isApproved: lawyerResult.data.is_approved === true,
-          currentTier: lawyerResult.data.subscription_tier,
-          isFeatured: lawyerResult.data.is_featured === true,
-          featuredUntil: lawyerResult.data.featured_until,
-          specialtyId: lawyerResult.data.specialty_id,
-          isComped: lawyerResult.data.is_comped === true,
-        })
-        setLoading(false)
-        return
-      }
-
-      const firmResult = await supabase
-        .from('firms')
-        .select('id, is_approved, subscription_tier, is_featured, featured_until, is_comped')
-        .eq('user_id', user.id)
-        .maybeSingle()
+      const firmResult = await supabase.from('firms').select('id, is_approved, is_comped, is_active, subscription_tier').eq('user_id', userResult.data.user.id).maybeSingle()
 
       if (firmResult.data) {
-        setAccount({
-          id: firmResult.data.id,
-          type: 'firm',
-          isApproved: firmResult.data.is_approved === true,
-          currentTier: firmResult.data.subscription_tier,
-          isFeatured: firmResult.data.is_featured === true,
-          featuredUntil: firmResult.data.featured_until,
-          specialtyId: null,
-          isComped: firmResult.data.is_comped === true,
-        })
+        setAccountType('firm')
+        setAccount(firmResult.data)
         setLoading(false)
         return
       }
 
-      setNotEligible(true)
+      setNotAllowed(true)
       setLoading(false)
     }
 
     loadData()
   }, [])
 
-  function goToCheckoutForTier(tierId: string, price: number) {
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    setMenuOpen(false)
+    router.push('/')
+  }
+
+  function toggleMenu() {
+    setMenuOpen(!menuOpen)
+  }
+
+  function handleSelectTier(tier: string, amount: number) {
     if (!account) return
-    const url = '/checkout?type=subscription&tier=' + tierId + '&amount=' + price + '&accountType=' + account.type + '&accountId=' + account.id
-    router.push(url)
+    router.push('/checkout?type=subscription&tier=' + tier + '&amount=' + amount + '&accountType=' + accountType + '&accountId=' + account.id)
   }
 
-  async function handleFeatureClick() {
-    if (!account) return
-    setCheckingFeatured(true)
-    setFeaturedMessage('')
-
-    const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
-
-    if (account.type === 'lawyer') {
-      const featuredResult = await supabase
-        .from('lawyers')
-        .select('id')
-        .eq('is_featured', true)
-        .eq('specialty_id', account.specialtyId)
-        .gte('featured_until', todayStr)
-
-      const currentCount = featuredResult.data ? featuredResult.data.length : 0
-
-      if (currentCount >= 5) {
-        setCheckingFeatured(false)
-        setFeaturedMessage('عذراً، امتلأت جميع الأماكن المميزة لهذا التخصص حالياً')
-        return
-      }
-    } else {
-      const featuredFirmsResult = await supabase
-        .from('firms')
-        .select('id')
-        .eq('is_featured', true)
-        .gte('featured_until', todayStr)
-
-      const currentCount = featuredFirmsResult.data ? featuredFirmsResult.data.length : 0
-
-      if (currentCount >= 5) {
-        setCheckingFeatured(false)
-        setFeaturedMessage('عذراً، امتلأت جميع الأماكن المميزة حالياً')
-        return
-      }
-    }
-
-    const price = account.type === 'lawyer' ? 50 : 120
-    const url = '/checkout?type=featured&amount=' + price + '&accountType=' + account.type + '&accountId=' + account.id
-    router.push(url)
-  }
-
-  function renderTierCard(tier: { id: string; label: string; price: number; totalLabel: string }) {
-    const isCurrent = account && account.currentTier === tier.id
-
-    function selectClick() {
-      goToCheckoutForTier(tier.id, tier.price)
-    }
-
-    return (
-      <div key={tier.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 text-center">
-        <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">{tier.label}</h3>
-        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-6">{tier.totalLabel}</p>
-        <button
-          onClick={selectClick}
-          disabled={Boolean(isCurrent)}
-          className={
-            "w-full py-3 rounded-md font-['Tajawal'] font-medium transition disabled:opacity-60 " +
-            (isCurrent ? 'bg-[#2F4538] text-white' : 'bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E]')
-          }
-        >
-          {isCurrent ? 'الخطة الحالية' : 'اختر هذه الخطة'}
-        </button>
-      </div>
-    )
-  }
+  const tiers = accountType === 'firm'
+    ? [
+        { key: 'monthly', label: 'شهري', price: 50 },
+        { key: 'yearly', label: 'سنوي', price: 450 },
+        { key: '5year', label: '5 سنوات', price: 750 },
+      ]
+    : [
+        { key: 'monthly', label: 'شهري', price: 20 },
+        { key: 'yearly', label: 'سنوي', price: 180 },
+        { key: '5year', label: '5 سنوات', price: 300 },
+      ]
 
   if (loading) {
     return (
@@ -181,7 +92,7 @@ export default function SubscriptionPage() {
     )
   }
 
-  if (notEligible || !account) {
+  if (notAllowed) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center">
@@ -192,80 +103,82 @@ export default function SubscriptionPage() {
     )
   }
 
-  if (account.isComped) {
+  if (account && !account.is_approved) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">حساب مجاني</h1>
-            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed">
-              تم منحك حساباً مجانياً من إدارة حمورابي، ملفك ظاهر ونشط على المنصة بدون رسوم اشتراك.
-            </p>
+            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">قيد المراجعة</h1>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed">حسابك قيد المراجعة حالياً. يمكنك الاشتراك بعد اعتماد حسابك من قبل فريقنا.</p>
           </div>
         </div>
       </div>
     )
   }
 
-  if (!account.isApproved) {
+  if (account && account.is_comped) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
-          <div className="bg-white border border-[#D8D2C4] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">قيد المراجعة</h1>
-            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed">
-              شكراً لتسجيلك في حمورابي. حسابك قيد المراجعة حالياً من فريقنا للتأكد من صحة بيانات الترخيص، وسيتم إعلامك عند اكتمال المراجعة خلال 24 ساعة. بعد الموافقة يمكنك اختيار خطة الاشتراك والظهور على المنصة.
-            </p>
+          <div className="bg-white border-2 border-[#2F4538] rounded-lg p-8">
+            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">حساب مجاني</h1>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed">حسابك مفعّل مجاناً من قبل فريق حمورابي، ولا حاجة للاشتراك.</p>
           </div>
         </div>
       </div>
     )
   }
-
-  const tiers = account.type === 'firm' ? firmTiers : individualTiers
-  const featuredPrice = account.type === 'lawyer' ? 50 : 120
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="font-['Amiri'] text-4xl mb-2">خطط الاشتراك</h1>
-          <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
+        <div className="max-w-2xl mx-auto">
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+            <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
+            <div className="flex gap-5 items-center">
+              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
+              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              {accountType === 'lawyer' && <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>}
+              {accountType === 'firm' && <a href="/firm-dashboard" className="hover:text-[#AD8A4E] transition">أدواتي</a>}
+              <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
+              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
+              <div className="relative">
+                <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
+                </button>
+                {menuOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
+                    <a href={accountType === 'firm' ? '/firm-info' : '/lawyer-info'} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>
+                    <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">تسجيل الخروج</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">الاشتراك</h1>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">
+            {account && account.subscription_tier ? 'باقتك الحالية: ' + account.subscription_tier : 'اختر الباقة المناسبة لك للوصول إلى جميع أدوات حمورابي'}
+          </p>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {tiers.map(renderTierCard)}
-        </div>
+      <div className="max-w-2xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {tiers.map(function (tier) {
+          function selectClick() {
+            handleSelectTier(tier.key, tier.price)
+          }
 
-        <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">إعلان مميز</h2>
-            <span className="px-3 py-1 bg-[#AD8A4E] text-white text-xs font-['Tajawal'] rounded-full">إعلان</span>
-          </div>
-          <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4">
-            اجعل ملفك من ضمن أول 5 نتائج مميزة في تخصصك لمدة شهر كامل مقابل {featuredPrice} د.أ
-          </p>
-
-          {account.isFeatured && (
-            <p className="font-['Tajawal'] text-sm text-[#2F4538] mb-3">
-              إعلانك المميز ساري حتى {account.featuredUntil}
-            </p>
-          )}
-
-          <button
-            onClick={handleFeatureClick}
-            disabled={checkingFeatured}
-            className="w-full py-3 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] font-medium hover:bg-[#c49b58] transition disabled:opacity-60"
-          >
-            {checkingFeatured ? 'جاري التحقق...' : account.isFeatured ? 'تجديد لمدة شهر إضافي' : 'فعّل الإعلان المميز'}
-          </button>
-
-          {featuredMessage && (
-            <p className="mt-3 font-['Tajawal'] text-sm text-[#2F4538]">{featuredMessage}</p>
-          )}
-        </div>
+          return (
+            <div key={tier.key} className="bg-white border border-[#D8D2C4] rounded-lg p-6 text-center">
+              <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">{tier.label}</h3>
+              <p className="font-['Tajawal'] font-bold text-3xl text-[#AD8A4E] mb-4">{tier.price} د.أ</p>
+              <button onClick={selectClick} className="w-full py-3 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition">
+                اشترك الآن
+              </button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

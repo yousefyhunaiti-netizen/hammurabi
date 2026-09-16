@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import ReactMarkdown from 'react-markdown'
 
 type Message = {
   role: string
@@ -11,7 +12,7 @@ type Message = {
 
 export default function AiAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: 'مرحباً! أنا مساعد حمورابي الذكي. أخبرني بمشكلتك القانونية بإيجاز وسأساعدك في العثور على التخصص أو المحامي المناسب.' },
+    { role: 'model', text: 'مرحباً! أنا مساعد حمورابي الذكي. كيف يمكنني مساعدتك اليوم؟' },
   ])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -53,10 +54,6 @@ export default function AiAssistantPage() {
       }
 
       setCheckingAuth(false)
-
-      if (isLawyerAccount || isFirmAccount) {
-        setMessages([{ role: 'model', text: 'مرحباً! أنا مساعد حمورابي الذكي. يمكنني مساعدتك في شرح مفاهيم قانونية، صياغة نصوص، أو الإجابة عن أسئلتك حول استخدام المنصة.' }])
-      }
     }
 
     checkAccount()
@@ -66,7 +63,6 @@ export default function AiAssistantPage() {
     await supabase.auth.signOut()
     setLoggedIn(false)
     setMenuOpen(false)
-    router.push('/')
   }
 
   function toggleMenu() {
@@ -83,7 +79,7 @@ export default function AiAssistantPage() {
     if (!input.trim()) return
 
     const newMessages = messages.concat([{ role: 'user', text: input }])
-    setMessages(newMessages)
+    setMessages(newMessages.concat([{ role: 'model', text: '' }]))
     setInput('')
     setSending(true)
 
@@ -97,9 +93,25 @@ export default function AiAssistantPage() {
       body: JSON.stringify({ message: input, history: historyForApi, accountType: getAccountTypeForApi() }),
     })
 
-    const data = await response.json()
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
 
-    setMessages(newMessages.concat([{ role: 'model', text: data.reply }]))
+    if (!reader) {
+      setSending(false)
+      return
+    }
+
+    let accumulatedText = ''
+
+    while (true) {
+      const result = await reader.read()
+      if (result.done) break
+
+      accumulatedText = accumulatedText + decoder.decode(result.value, { stream: true })
+
+      setMessages(newMessages.concat([{ role: 'model', text: accumulatedText }]))
+    }
+
     setSending(false)
   }
 
@@ -116,7 +128,9 @@ export default function AiAssistantPage() {
     return (
       <div key={index} className={"mb-3 flex " + (isUser ? 'justify-start' : 'justify-end')}>
         <div className={"px-4 py-3 rounded-lg max-w-sm font-['Tajawal'] text-sm " + (isUser ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#1B1A17]')}>
-          <p className="whitespace-pre-wrap">{m.text}</p>
+          <div className="prose-sm [&_p]:mb-2 [&_ul]:list-disc [&_ul]:mr-4 [&_ol]:list-decimal [&_ol]:mr-4 [&_strong]:font-bold [&_h3]:font-bold [&_h3]:text-base [&_h3]:mb-1">
+            <ReactMarkdown>{m.text}</ReactMarkdown>
+          </div>
           {hasRecommendation && !isUser && !isLawyerAccount && !isFirmAccount && (
             <a href="/lawyers" className="inline-block mt-2 px-3 py-2 bg-[#AD8A4E] text-white rounded-md text-xs">
               تصفح دليل المحامين
@@ -129,13 +143,13 @@ export default function AiAssistantPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-8 px-6">
+      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-2xl mx-auto">
-          <div className="flex justify-between items-center mb-6 font-['Tajawal'] text-sm">
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/">
-              <img src="/logo.png" alt="حمورابي" className="h-10 w-auto" />
+              <img src="/logo.png" alt="حمورابي" className="h-12 w-auto" />
             </a>
-            <div className="flex gap-4 items-center">
+            <div className="flex gap-5 items-center">
               {!isLawyerAccount && !isFirmAccount && (
                 <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
               )}
@@ -166,7 +180,7 @@ export default function AiAssistantPage() {
 
               {!checkingAuth && loggedIn && (
                 <div className="relative">
-                  <button onClick={toggleMenu} className="w-7 h-7 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+                  <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                     <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" />
                     </svg>
@@ -188,7 +202,7 @@ export default function AiAssistantPage() {
             </div>
           </div>
 
-          <h1 className="font-['Tajawal'] font-bold text-3xl mb-1">مساعد حمورابي الذكي</h1>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-1">مساعد حمورابي الذكي</h1>
           <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">
             {isLawyerAccount || isFirmAccount ? 'اسأل عن أي أمر قانوني أو استخدام المنصة' : 'اسأل عن مشكلتك القانونية وسنوجهك للمحامي المناسب'}
           </p>
@@ -207,10 +221,12 @@ export default function AiAssistantPage() {
       <div className="flex-1 max-w-2xl mx-auto w-full px-6 py-4 flex flex-col">
         <div className="flex-1 mb-4">
           {messages.map(renderMessage)}
-          {sending && (
+          {sending && messages[messages.length - 1] && messages[messages.length - 1].text === '' && (
             <div className="flex justify-end mb-3">
-              <div className="px-4 py-3 rounded-lg bg-white border border-[#D8D2C4] font-['Tajawal'] text-sm text-[#4A473F]">
-                يكتب...
+              <div className="px-4 py-3 rounded-lg bg-white border border-[#D8D2C4] flex gap-1.5 items-center">
+                <span className="w-2 h-2 rounded-full bg-[#AD8A4E] animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-2 h-2 rounded-full bg-[#AD8A4E] animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-2 h-2 rounded-full bg-[#AD8A4E] animate-bounce" style={{ animationDelay: '300ms' }}></span>
               </div>
             </div>
           )}

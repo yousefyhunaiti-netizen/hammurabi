@@ -25,8 +25,6 @@ type LawyerName = {
 export default function LegalArticlesPage() {
   const [loading, setLoading] = useState(true)
   const [isLawyer, setIsLawyer] = useState(false)
-  const [lawyerId, setLawyerId] = useState<number | null>(null)
-  const [isSubscribed, setIsSubscribed] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [loggedIn, setLoggedIn] = useState(false)
   const [infoLink, setInfoLink] = useState('')
@@ -36,15 +34,7 @@ export default function LegalArticlesPage() {
   const [articles, setArticles] = useState<Article[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [lawyerNames, setLawyerNames] = useState<LawyerName[]>([])
-  const [selectedSpecialty, setSelectedSpecialty] = useState<number | null>(null)
   const [search, setSearch] = useState('')
-  const [view, setView] = useState('cards')
-
-  const [showForm, setShowForm] = useState(false)
-  const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
-  const [specialtyId, setSpecialtyId] = useState('')
-  const [posting, setPosting] = useState(false)
 
   const supabase = createClient()
 
@@ -78,12 +68,10 @@ export default function LegalArticlesPage() {
         if (customerResult.data) {
           setInfoLink('/my-info')
         } else {
-          const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', user.id).maybeSingle()
+          const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setIsLawyer(true)
-            setLawyerId(lawyerResult.data.id)
             setInfoLink('/lawyer-info')
-            setIsSubscribed(lawyerResult.data.is_active === true || lawyerResult.data.is_comped === true)
 
             const unreadResult = await supabase.from('lawyer_messages').select('id', { count: 'exact', head: true }).eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
             setTotalUnread(unreadResult.count || 0)
@@ -118,25 +106,6 @@ export default function LegalArticlesPage() {
     setMenuOpen(!menuOpen)
   }
 
-  async function handlePost() {
-    if (!title.trim() || !body.trim() || !lawyerId) return
-    setPosting(true)
-
-    await supabase.from('legal_articles').insert({
-      lawyer_id: lawyerId,
-      specialty_id: specialtyId ? Number(specialtyId) : null,
-      title: title,
-      body: body,
-    })
-
-    setTitle('')
-    setBody('')
-    setSpecialtyId('')
-    setShowForm(false)
-    await loadArticles()
-    setPosting(false)
-  }
-
   function getSpecialtyName(id: number | null) {
     if (!id) return ''
     const found = specialties.find(function (s) { return s.id === id })
@@ -149,14 +118,12 @@ export default function LegalArticlesPage() {
   }
 
   const filteredArticles = articles.filter(function (a) {
-    const specialtyMatch = selectedSpecialty ? a.specialty_id === selectedSpecialty : true
-    if (!specialtyMatch) return false
     if (!search.trim()) return true
     const lower = search.toLowerCase()
     return a.title.toLowerCase().indexOf(lower) !== -1 || a.body.toLowerCase().indexOf(lower) !== -1 || getLawyerName(a.lawyer_id).toLowerCase().indexOf(lower) !== -1
   })
 
-  function renderCardArticle(article: Article) {
+  function renderArticle(article: Article) {
     const lawyerLink = '/lawyers/' + article.lawyer_id
     return (
       <div key={article.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-4 hover:shadow-lg transition">
@@ -168,24 +135,9 @@ export default function LegalArticlesPage() {
             <a href={lawyerLink} className="font-['Tajawal'] font-medium text-sm text-[#1B1A17] hover:text-[#AD8A4E]">{getLawyerName(article.lawyer_id)}</a>
             <p className="font-['Tajawal'] text-xs text-[#4A473F]">{readingTime(article.body)}</p>
           </div>
-          {article.specialty_id && (
-            <span className="mr-auto px-3 py-1 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full whitespace-nowrap">{getSpecialtyName(article.specialty_id)}</span>
-          )}
         </div>
         <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">{article.title}</h3>
         <p className="font-['Tajawal'] text-sm text-[#4A473F] whitespace-pre-wrap line-clamp-4">{article.body}</p>
-      </div>
-    )
-  }
-
-  function renderListArticle(article: Article) {
-    return (
-      <div key={article.id} className="flex items-center justify-between bg-white border border-[#D8D2C4] rounded-lg p-4 mb-2 hover:border-[#AD8A4E] transition">
-        <div>
-          <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{article.title}</h3>
-          <p className="font-['Tajawal'] text-xs text-[#4A473F]">{getLawyerName(article.lawyer_id)} {article.specialty_id ? '— ' + getSpecialtyName(article.specialty_id) : ''}</p>
-        </div>
-        <span className="font-['Tajawal'] text-xs text-[#AD8A4E] whitespace-nowrap">{readingTime(article.body)}</span>
       </div>
     )
   }
@@ -258,62 +210,19 @@ export default function LegalArticlesPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex flex-col md:flex-row gap-3 mb-6">
-          <input
-            type="text"
-            value={search}
-            onChange={function (e) { setSearch(e.target.value) }}
-            placeholder="ابحث في المقالات..."
-            className="flex-1 px-4 py-2.5 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
-          />
-          <select
-            value={selectedSpecialty ?? ''}
-            onChange={function (e) { setSelectedSpecialty(e.target.value ? Number(e.target.value) : null) }}
-            className="px-4 py-2.5 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
-          >
-            <option value="">كل التخصصات</option>
-            {specialties.map(function (s) { return <option key={s.id} value={s.id}>{s.name_ar}</option> })}
-          </select>
-          <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 w-fit">
-            <button onClick={function () { setView('cards') }} className={"px-4 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (view === 'cards' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>بطاقات</button>
-            <button onClick={function () { setView('list') }} className={"px-4 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (view === 'list' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>قائمة</button>
-          </div>
-        </div>
-
-        {isLawyer && (
-          <div className="mb-6">
-            {isSubscribed ? (
-              <button onClick={function () { setShowForm(!showForm) }} className="px-5 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm hover:bg-[#c49b58] transition">
-                {showForm ? 'إلغاء' : 'اكتب مقالاً'}
-              </button>
-            ) : (
-              <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-4">
-                <p className="font-['Tajawal'] text-sm text-[#4A473F]">يلزم الاشتراك في إحدى الباقات لتتمكن من نشر مقالات. <a href="/subscription" className="text-[#AD8A4E] underline">عرض خطط الاشتراك</a></p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {showForm && isSubscribed && (
-          <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
-            <input type="text" value={title} onChange={function (e) { setTitle(e.target.value) }} placeholder="عنوان المقال" className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            <select value={specialtyId} onChange={function (e) { setSpecialtyId(e.target.value) }} className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-              <option value="">اختر التخصص</option>
-              {specialties.map(function (s) { return <option key={s.id} value={s.id}>{s.name_ar}</option> })}
-            </select>
-            <textarea value={body} onChange={function (e) { setBody(e.target.value) }} rows={6} placeholder="محتوى المقال" className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            <button onClick={handlePost} disabled={posting} className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60">
-              {posting ? 'جاري النشر...' : 'نشر المقال'}
-            </button>
-          </div>
-        )}
+        <input
+          type="text"
+          value={search}
+          onChange={function (e) { setSearch(e.target.value) }}
+          placeholder="ابحث في المقالات..."
+          className="w-full px-4 py-2.5 mb-6 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+        />
 
         {filteredArticles.length === 0 && (
           <p className="font-['Tajawal'] text-center text-[#4A473F]">لا توجد مقالات مطابقة</p>
         )}
 
-        {view === 'cards' && filteredArticles.map(renderCardArticle)}
-        {view === 'list' && filteredArticles.map(renderListArticle)}
+        {filteredArticles.map(renderArticle)}
       </div>
     </div>
   )
