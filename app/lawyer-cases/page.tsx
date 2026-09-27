@@ -716,7 +716,7 @@ export default function LawyerCasesPage() {
       <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-6 space-y-3">
         <input type="text" value={formCaseNumber} onChange={function (e) { setFormCaseNumber(e.target.value) }} placeholder="رقم القضية" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
         <select value={formSpecialty} onChange={function (e) { setFormSpecialty(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-          <option value="">اختر التخصص</option>
+          <option value="">اختر الاختصاص</option>
           {specialties.map(function (s) { return <option key={s.id} value={s.id}>{s.name_ar}</option> })}
         </select>
         <input type="text" value={formClientName} onChange={function (e) { setFormClientName(e.target.value) }} placeholder="اسم الموكل" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />

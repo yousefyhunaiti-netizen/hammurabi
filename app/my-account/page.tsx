@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import Footer from '../components/Footer'
 
 type Customer = {
   id: number
@@ -26,6 +27,19 @@ export default function MyAccountPage() {
 
   const supabase = createClient()
   const router = useRouter()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function () {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return function () {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   useEffect(function () {
     async function loadData() {
@@ -112,7 +126,7 @@ export default function MyAccountPage() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg">
+    <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
@@ -141,7 +155,7 @@ export default function MyAccountPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-10">
+      <div className="max-w-2xl mx-auto px-6 py-10 flex-1 w-full">
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <div className="space-y-4">
             <div>
@@ -177,7 +191,7 @@ export default function MyAccountPage() {
 
             <label className="flex items-center gap-2 font-['Tajawal'] text-sm text-[#4A473F]">
               <input type="checkbox" checked={isTrainee} onChange={function (e) { setIsTrainee(e.target.checked) }} />
-              أنا محامٍ متدرب أبحث عن فرصة تدريب
+              أنا محامي متدرب أبحث عن فرصة تدريب
             </label>
 
             <button
@@ -198,6 +212,8 @@ export default function MyAccountPage() {
           <a href="/change-password" className="font-['Tajawal'] text-sm text-[#AD8A4E] hover:underline">تغيير كلمة المرور</a>
         </div>
       </div>
+
+      <Footer variant="customer" />
     </div>
   )
 }

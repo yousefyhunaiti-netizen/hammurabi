@@ -31,7 +31,7 @@ type LegalCase = {
 }
 
 const courtScopes = ['صلح', 'بداية', 'استئناف', 'تمييز']
-const specialPowersOptions = ['الصلح', 'الإبراء', 'قبض الأموال وصرف الشيكات', 'التنازل عن الدعوى', 'تفويض محامٍ آخر بالتوكيل من الباطن']
+const specialPowersOptions = ['الصلح', 'الإبراء', 'قبض الأموال وصرف الشيكات', 'التنازل عن الدعوى', 'تفويض محامي آخر بالتوكيل من الباطن']
 
 function formatDateDisplay(dateStr: string | null) {
   if (!dateStr) return '-'

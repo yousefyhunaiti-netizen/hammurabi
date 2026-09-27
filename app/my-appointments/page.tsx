@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import Footer from '../components/Footer'
 
 type Appointment = {
   id: number
@@ -43,6 +44,19 @@ export default function MyAppointmentsPage() {
 
   const supabase = createClient()
   const router = useRouter()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function () {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return function () {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   useEffect(function () {
     async function loadData() {
@@ -62,7 +76,7 @@ export default function MyAppointmentsPage() {
 
       const firmCheck = await supabase.from('firms').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
       if (firmCheck.data) {
-        router.push('/firm-dashboard')
+        router.push('/firm-appointments')
         return
       }
 
@@ -180,18 +194,18 @@ export default function MyAppointmentsPage() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg">
+    <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
             <div className="flex gap-5 items-center">
-              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
-              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
-              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
-              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
+              <a href="/my-appointments" className="text-[#AD8A4E]">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
-              <div className="relative">
+              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
+              <div className="relative" ref={menuRef}>
                 <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                   <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
                 </button>
@@ -209,7 +223,7 @@ export default function MyAppointmentsPage() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-10">
+      <div className="max-w-2xl mx-auto px-6 py-10 flex-1 w-full">
         <label className="flex items-center gap-2 font-['Tajawal'] text-sm text-[#4A473F] mb-6">
           <input type="checkbox" checked={showCancelled} onChange={function (e) { setShowCancelled(e.target.checked) }} />
           إظهار المواعيد الملغاة
@@ -221,6 +235,8 @@ export default function MyAppointmentsPage() {
 
         {visibleAppointments.map(renderAppointment)}
       </div>
+
+      <Footer variant="customer" />
     </div>
   )
 }

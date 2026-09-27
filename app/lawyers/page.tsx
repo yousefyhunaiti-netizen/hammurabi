@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import Footer from '../components/Footer'
 
 type Lawyer = {
   id: number
@@ -17,8 +18,6 @@ type Lawyer = {
   photo_url: string | null
   vacation_until: string | null
   firm_id: number | null
-  is_featured: boolean | null
-  featured_until: string | null
 }
 
 type Firm = {
@@ -26,8 +25,7 @@ type Firm = {
   firm_name: string
   bio: string | null
   city: string | null
-  is_featured: boolean | null
-  featured_until: string | null
+  founded_year: number | null
 }
 
 type Specialty = {
@@ -42,23 +40,57 @@ type Review = {
 
 const cityOptions = ['عمان', 'إربد', 'الزرقاء', 'البلقاء', 'المفرق', 'الكرك', 'جرش', 'عجلون', 'مادبا', 'العقبة', 'معان', 'الطفيلة']
 
+function todayString() {
+  const now = new Date()
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+}
+
+function formatDateDisplay(dateStr: string) {
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length !== 3) return dateStr
+  return parts[2] + '/' + parts[1] + '/' + parts[0]
+}
+
+function isOnVacation(l: Lawyer) {
+  return !!l.vacation_until && l.vacation_until >= todayString()
+}
+
 export default function LawyersPage() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
   const [firms, setFirms] = useState<Firm[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
-  const [selectedSpecialty, setSelectedSpecialty] = useState<number | null>(null)
-  const [selectedCity, setSelectedCity] = useState<string>('')
-  const [viewMode, setViewMode] = useState('individual')
-  const [loading, setLoading] = useState(true)
-  const [loggedIn, setLoggedIn] = useState(false)
+  const [viewMode, setViewMode] = useState('individuals')
+  const [layout, setLayout] = useState('cards')
+
+  const [search, setSearch] = useState('')
+  const [selectedSpecialty, setSelectedSpecialty] = useState('')
+  const [selectedCity, setSelectedCity] = useState('')
+  const [sortBy, setSortBy] = useState('default')
+  const [onlyAvailable, setOnlyAvailable] = useState(false)
+
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [accountRole, setAccountRole] = useState<'customer' | 'lawyer' | 'firm' | null>(null)
   const [infoLink, setInfoLink] = useState('')
-  const [isLawyerAccount, setIsLawyerAccount] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const supabase = createClient()
-  const router = useRouter()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function () {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return function () {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   useEffect(function () {
     async function loadData() {
@@ -67,45 +99,42 @@ export default function LawyersPage() {
 
       if (user) {
         setLoggedIn(true)
-
         const customerResult = await supabase.from('customers').select('id').eq('user_id', user.id).maybeSingle()
         if (customerResult.data) {
+          setAccountRole('customer')
           setInfoLink('/my-info')
         } else {
           const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
-            setInfoLink('/lawyer-info')
-            setIsLawyerAccount(true)
-          } else {
-            const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
-            if (firmResult.data) {
-              setInfoLink('/firm-info')
-            }
+            setAccountRole('lawyer')
+            setCheckingAuth(false)
+            setLoading(false)
+            return
+          }
+          const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+          if (firmResult.data) {
+            setAccountRole('firm')
+            setCheckingAuth(false)
+            setLoading(false)
+            return
           }
         }
       }
 
       setCheckingAuth(false)
 
-      const lawyersResult = await supabase
-        .from('lawyers')
-        .select('*')
-        .eq('is_approved', true)
-        .eq('is_active', true)
+      const lawyersResult = await supabase.from('lawyers').select('*').eq('is_approved', true).eq('is_active', true)
+      setLawyers(lawyersResult.data || [])
 
-      const firmsResult = await supabase
-        .from('firms')
-        .select('*')
-        .eq('is_approved', true)
-        .eq('is_active', true)
+      const firmsResult = await supabase.from('firms').select('*').eq('is_approved', true).eq('is_active', true)
+      setFirms(firmsResult.data || [])
 
       const specialtiesResult = await supabase.from('specialties').select('*')
-      const reviewsResult = await supabase.from('reviews').select('lawyer_id, rating')
-
-      setLawyers(lawyersResult.data || [])
-      setFirms(firmsResult.data || [])
       setSpecialties(specialtiesResult.data || [])
+
+      const reviewsResult = await supabase.from('reviews').select('lawyer_id, rating')
       setReviews(reviewsResult.data || [])
+
       setLoading(false)
     }
 
@@ -123,326 +152,458 @@ export default function LawyersPage() {
     setMenuOpen(!menuOpen)
   }
 
-  function isFeaturedActive(item: { is_featured: boolean | null; featured_until: string | null }) {
-    if (!item.is_featured || !item.featured_until) return false
-    const today = new Date()
-    const untilDate = new Date(item.featured_until)
-    return untilDate >= today
+  function getSpecialtyName(id: number) {
+    const found = specialties.find(function (s) { return s.id === id })
+    return found ? found.name_ar : ''
   }
 
-  function getLawyerSpecialtyIds(lawyer: Lawyer) {
-    if (lawyer.specialty_ids) {
-      return lawyer.specialty_ids.split(',').filter(Boolean).map(function (s) { return Number(s) })
-    }
-    if (lawyer.specialty_id) {
-      return [lawyer.specialty_id]
-    }
-    return []
+  function getLawyerSpecialtyIds(l: Lawyer) {
+    if (l.specialty_ids) return l.specialty_ids.split(',').filter(Boolean).map(Number)
+    return [l.specialty_id]
   }
 
-  function getLawyerCities(lawyer: Lawyer) {
-    if (lawyer.cities) {
-      return lawyer.cities.split(',').filter(Boolean)
-    }
-    if (lawyer.city) {
-      return [lawyer.city]
-    }
-    return []
-  }
-
-  const individualLawyers = lawyers.filter(function (l) { return !l.firm_id })
-
-  const filteredLawyers = individualLawyers
-    .filter(function (lawyer) {
-      const lawyerSpecIds = getLawyerSpecialtyIds(lawyer)
-      const lawyerCities = getLawyerCities(lawyer)
-      const specialtyMatch = selectedSpecialty ? lawyerSpecIds.indexOf(selectedSpecialty) !== -1 : true
-      const cityMatch = selectedCity ? lawyerCities.indexOf(selectedCity) !== -1 : true
-      return specialtyMatch && cityMatch
-    })
-    .sort(function (a, b) {
-      const aFeatured = isFeaturedActive(a) ? 1 : 0
-      const bFeatured = isFeaturedActive(b) ? 1 : 0
-      return bFeatured - aFeatured
-    })
-
-  const sortedFirms = firms.slice().sort(function (a, b) {
-    const aFeatured = isFeaturedActive(a) ? 1 : 0
-    const bFeatured = isFeaturedActive(b) ? 1 : 0
-    return bFeatured - aFeatured
-  })
-
-  function getSpecialtyNames(lawyer: Lawyer) {
-    const ids = getLawyerSpecialtyIds(lawyer)
-    const names = ids.map(function (id) {
-      const found = specialties.find(function (s) { return s.id === id })
-      return found ? found.name_ar : ''
-    })
-    return names.filter(Boolean).join('، ')
-  }
-
-  function getCitiesDisplay(lawyer: Lawyer) {
-    const cities = getLawyerCities(lawyer)
-    return cities.join('، ')
+  function getLawyerCities(l: Lawyer) {
+    if (l.cities) return l.cities.split(',').filter(Boolean)
+    return [l.city]
   }
 
   function getRatingInfo(lawyerId: number) {
     const lawyerReviews = reviews.filter(function (r) { return r.lawyer_id === lawyerId })
-    if (lawyerReviews.length === 0) {
-      return { average: 0, count: 0 }
-    }
-    let sum = 0
-    for (let i = 0; i < lawyerReviews.length; i++) {
-      sum = sum + lawyerReviews[i].rating
-    }
-    return { average: sum / lawyerReviews.length, count: lawyerReviews.length }
+    if (lawyerReviews.length === 0) return null
+    const avg = lawyerReviews.reduce(function (sum, r) { return sum + r.rating }, 0) / lawyerReviews.length
+    return { avg: avg.toFixed(1), value: avg, count: lawyerReviews.length }
   }
 
-  function isOnVacation(lawyer: Lawyer) {
-    if (!lawyer.vacation_until) return false
-    const today = new Date()
-    const vacationEnd = new Date(lawyer.vacation_until)
-    return vacationEnd >= today
+  function getRatingValue(lawyerId: number) {
+    const info = getRatingInfo(lawyerId)
+    return info ? info.value : -1
   }
 
-  function renderLawyerCard(lawyer: Lawyer) {
-    const ratingInfo = getRatingInfo(lawyer.id)
-    const profileLink = '/lawyers/' + lawyer.id
-    const onVacation = isOnVacation(lawyer)
-    const featured = isFeaturedActive(lawyer)
+  function clearFilters() {
+    setSearch('')
+    setSelectedSpecialty('')
+    setSelectedCity('')
+    setOnlyAvailable(false)
+  }
+
+  const lowerSearch = search.trim().toLowerCase()
+  const hasActiveFilters = Boolean(lowerSearch || selectedCity || (viewMode === 'individuals' && (selectedSpecialty || onlyAvailable)))
+
+  const filteredLawyers = lawyers
+    .filter(function (l) {
+      if (selectedSpecialty && getLawyerSpecialtyIds(l).indexOf(Number(selectedSpecialty)) === -1) return false
+      if (selectedCity && getLawyerCities(l).indexOf(selectedCity) === -1) return false
+      if (onlyAvailable && isOnVacation(l)) return false
+      if (!lowerSearch) return true
+      const haystack = [
+        l.full_name,
+        l.bio || '',
+        getLawyerSpecialtyIds(l).map(getSpecialtyName).join(' '),
+        getLawyerCities(l).join(' '),
+      ].join(' ').toLowerCase()
+      return haystack.indexOf(lowerSearch) !== -1
+    })
+    .sort(function (a, b) {
+      if (sortBy === 'rating') return getRatingValue(b.id) - getRatingValue(a.id)
+      if (sortBy === 'experience') return (b.years_experience || 0) - (a.years_experience || 0)
+      if (sortBy === 'fee') return (a.consultation_fee || 999999) - (b.consultation_fee || 999999)
+
+      const vacA = isOnVacation(a) ? 1 : 0
+      const vacB = isOnVacation(b) ? 1 : 0
+      if (vacA !== vacB) return vacA - vacB
+      const ratingDiff = getRatingValue(b.id) - getRatingValue(a.id)
+      if (ratingDiff !== 0) return ratingDiff
+      return (b.years_experience || 0) - (a.years_experience || 0)
+    })
+
+  const filteredFirms = firms
+    .filter(function (f) {
+      if (selectedCity && f.city !== selectedCity) return false
+      if (!lowerSearch) return true
+      const haystack = [f.firm_name, f.bio || '', f.city || ''].join(' ').toLowerCase()
+      return haystack.indexOf(lowerSearch) !== -1
+    })
+    .sort(function (a, b) { return a.firm_name.localeCompare(b.firm_name, 'ar') })
+
+  function getFirmLawyerCount(firmId: number) {
+    return lawyers.filter(function (l) { return l.firm_id === firmId }).length
+  }
+
+  function renderLawyerAvatar(l: Lawyer, sizeClass: string, onVacation: boolean) {
+    return (
+      <div className="relative flex-shrink-0">
+        {l.photo_url ? (
+          <img src={l.photo_url} alt={l.full_name} className={sizeClass + ' rounded-full object-cover'} />
+        ) : (
+          <div className={sizeClass + " rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Tajawal'] font-bold text-2xl"}>
+            {l.full_name.charAt(0)}
+          </div>
+        )}
+        <span className={"absolute bottom-0 left-0 w-4 h-4 rounded-full border-2 border-white " + (onVacation ? 'bg-[#7A2E2E]' : 'bg-[#2F4538]')}></span>
+      </div>
+    )
+  }
+
+  function renderAvailability(onVacation: boolean, vacationUntil: string | null) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className={"w-2 h-2 rounded-full flex-shrink-0 " + (onVacation ? 'bg-[#7A2E2E]' : 'bg-[#2F4538]')}></span>
+        <span className={"font-['Tajawal'] text-xs " + (onVacation ? 'text-[#7A2E2E]' : 'text-[#2F4538]')}>
+          {onVacation && vacationUntil ? 'في إجازة حتى ' + formatDateDisplay(vacationUntil) : 'متاح للحجز'}
+        </span>
+      </div>
+    )
+  }
+
+  function renderLawyerCard(l: Lawyer) {
+    const specialtyNames = getLawyerSpecialtyIds(l).map(getSpecialtyName).filter(Boolean).join('، ')
+    const citiesText = getLawyerCities(l).filter(Boolean).join('، ')
+    const rating = getRatingInfo(l.id)
+    const onVacation = isOnVacation(l)
+    const feeText = l.consultation_fee ? l.consultation_fee + ' د.أ' : 'غير محدد'
+
+    if (layout === 'list') {
+      return (
+        <a key={l.id} href={'/lawyers/' + l.id} className="group flex items-center gap-4 bg-white border border-[#D8D2C4] rounded-xl p-4 mb-3 hover:shadow-lg hover:border-[#AD8A4E] transition-all duration-200">
+          {renderLawyerAvatar(l, 'w-14 h-14', onVacation)}
+
+          <div className="flex-1 min-w-0">
+            <h3 dir="auto" className="font-['Tajawal'] font-bold text-[#1B1A17] truncate text-right">{l.full_name}</h3>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">{specialtyNames || 'محامي'}</p>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F] truncate md:hidden">🎓 {l.years_experience || 0} سنوات · 📍 {citiesText}</p>
+          </div>
+
+          <div className="hidden md:block w-36 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">
+            {rating ? <span className="text-[#1B1A17]">⭐ {rating.avg} ({rating.count} تقييم)</span> : 'لا توجد تقييمات بعد'}
+          </div>
+
+          <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed">
+            <p>🎓 {l.years_experience || 0} سنوات خبرة</p>
+            <p className="truncate">📍 {citiesText}</p>
+          </div>
+
+          <div className="hidden sm:block w-20 flex-shrink-0 text-center">
+            <p className="font-['Tajawal'] text-[10px] text-[#4A473F]">استشارة سريعة</p>
+            <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{feeText}</p>
+          </div>
+
+          <div className="hidden lg:block w-40 flex-shrink-0">
+            {renderAvailability(onVacation, l.vacation_until)}
+          </div>
+
+          <span className="flex-shrink-0 px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] group-hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-sm">عرض الملف</span>
+        </a>
+      )
+    }
 
     return (
-      <div key={lawyer.id} className={"bg-white rounded-lg p-6 hover:shadow-lg transition relative " + (featured ? 'border-2 border-[#AD8A4E]' : 'border border-[#D8D2C4]')}>
-        {featured && (
-          <div className="absolute top-3 right-3 bg-[#AD8A4E] text-white text-xs font-['Tajawal'] px-2 py-1 rounded-full">
-            إعلان
-          </div>
-        )}
-
-        {onVacation && (
-          <div className="absolute top-3 left-3 bg-[#7A2E2E] text-white text-xs font-['Tajawal'] px-2 py-1 rounded-full">
-            في إجازة حتى {lawyer.vacation_until}
-          </div>
-        )}
-
+      <a key={l.id} href={'/lawyers/' + l.id} className="group flex flex-col h-full bg-white border border-[#D8D2C4] rounded-2xl p-5 hover:shadow-xl hover:-translate-y-1 hover:border-[#AD8A4E] transition-all duration-200">
         <div className="flex items-center gap-4 mb-4">
-          <div className="w-16 h-16 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-2xl">
-            {lawyer.full_name.charAt(0)}
-          </div>
-          <div>
-            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{lawyer.full_name}</h3>
-            <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">{getSpecialtyNames(lawyer)}</p>
+          {renderLawyerAvatar(l, 'w-16 h-16', onVacation)}
+          <div className="min-w-0 flex-1">
+            <h3 dir="auto" className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] truncate text-right">{l.full_name}</h3>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">{specialtyNames || 'محامي'}</p>
           </div>
         </div>
 
-        {ratingInfo.count > 0 && (
-          <div className="flex items-center gap-1 mb-4">
-            <svg className="w-4 h-4 text-[#AD8A4E]" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-            </svg>
-            <span className="font-['Tajawal'] text-sm font-medium text-[#1B1A17]">{ratingInfo.average.toFixed(1)}</span>
-            <span className="font-['Tajawal'] text-sm text-[#4A473F]">({ratingInfo.count} تقييم)</span>
+        <div className="h-6 mb-2">
+          {rating ? (
+            <p className="font-['Tajawal'] text-sm text-[#1B1A17]">⭐ {rating.avg} <span className="text-xs text-[#4A473F]">({rating.count} تقييم)</span></p>
+          ) : (
+            <p className="font-['Tajawal'] text-xs text-[#B0AA9C]">لا توجد تقييمات بعد</p>
+          )}
+        </div>
+
+        <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed line-clamp-2 min-h-[2.8rem] mb-4">{l.bio}</p>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F]">🎓 {l.years_experience || 0} سنوات خبرة</span>
+          <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F] max-w-full truncate">📍 {citiesText}</span>
+        </div>
+
+        <div className="mb-4">
+          {renderAvailability(onVacation, l.vacation_until)}
+        </div>
+
+        <div className="mt-auto flex justify-between items-center pt-4 border-t border-[#D8D2C4]">
+          <div>
+            <p className="font-['Tajawal'] text-[11px] text-[#4A473F]">استشارة سريعة</p>
+            <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{feeText}</p>
+          </div>
+          <span className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] group-hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-sm">عرض الملف</span>
+        </div>
+      </a>
+    )
+  }
+
+  function renderFirmCard(f: Firm) {
+    const lawyerCount = getFirmLawyerCount(f.id)
+    const yearsSince = f.founded_year ? new Date().getFullYear() - f.founded_year : null
+
+    if (layout === 'list') {
+      return (
+        <a key={f.id} href={'/firms/' + f.id} className="group flex items-center gap-4 bg-white border border-[#D8D2C4] rounded-xl p-4 mb-3 hover:shadow-lg hover:border-[#AD8A4E] transition-all duration-200">
+          <div className="w-14 h-14 rounded-full bg-[#AD8A4E] text-white flex items-center justify-center font-['Tajawal'] font-bold text-2xl flex-shrink-0">
+            {f.firm_name.charAt(0)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 dir="auto" className="font-['Tajawal'] font-bold text-[#1B1A17] truncate text-right">{f.firm_name}</h3>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">مكتب محاماة{f.city ? ' - ' + f.city : ''}</p>
+          </div>
+          <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">👥 {lawyerCount} محامي</div>
+          <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">{yearsSince !== null ? '🏛️ خبرة ' + yearsSince + ' سنة' : ''}</div>
+          <span className="flex-shrink-0 px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] group-hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-sm">عرض المكتب</span>
+        </a>
+      )
+    }
+
+    return (
+      <a key={f.id} href={'/firms/' + f.id} className="group flex flex-col h-full bg-white border border-[#D8D2C4] rounded-2xl p-5 hover:shadow-xl hover:-translate-y-1 hover:border-[#AD8A4E] transition-all duration-200">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 rounded-full bg-[#AD8A4E] text-white flex items-center justify-center font-['Tajawal'] font-bold text-2xl flex-shrink-0">
+            {f.firm_name.charAt(0)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 dir="auto" className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] truncate text-right">{f.firm_name}</h3>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">مكتب محاماة{f.city ? ' - ' + f.city : ''}</p>
+          </div>
+        </div>
+
+        <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed line-clamp-2 min-h-[2.8rem] mb-4">{f.bio || ''}</p>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F]">👥 {lawyerCount} محامي</span>
+          {yearsSince !== null && (
+            <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F]">🏛️ خبرة {yearsSince} سنة</span>
+          )}
+        </div>
+
+        <div className="mt-auto flex justify-end pt-4 border-t border-[#D8D2C4]">
+          <span className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] group-hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-sm">عرض المكتب</span>
+        </div>
+      </a>
+    )
+  }
+
+  function renderEmpty(message: string) {
+    return (
+      <div className="bg-white border border-[#D8D2C4] rounded-2xl p-10 text-center">
+        <p className="font-['Tajawal'] font-bold text-[#1B1A17] mb-1">{message}</p>
+        {hasActiveFilters && (
+          <div>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4">جرّب تغيير الفلاتر أو البحث بكلمات أخرى.</p>
+            <button onClick={clearFilters} className="px-5 py-2 bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-sm">مسح الفلاتر</button>
           </div>
         )}
+      </div>
+    )
+  }
 
-        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4 line-clamp-2">{lawyer.bio}</p>
+  if (checkingAuth) {
+    return (
+      <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
+        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+      </div>
+    )
+  }
 
-        <div className="flex justify-between items-center text-sm font-['Tajawal'] text-[#4A473F] mb-4">
-          <span>{getCitiesDisplay(lawyer)}</span>
-          <span>{lawyer.years_experience} سنوات خبرة</span>
-        </div>
-
-        <div className="flex justify-between items-center pt-4 border-t border-[#D8D2C4]">
-          <span className="font-['Tajawal'] font-bold text-[#1B1A17]">{lawyer.consultation_fee} د.أ</span>
-          <a href={profileLink} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition">
-            عرض الملف
+  if (accountRole === 'lawyer' || accountRole === 'firm') {
+    return (
+      <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
+        <div className="text-center max-w-md bg-white border border-[#D8D2C4] rounded-2xl p-8">
+          <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">دليل المحامين مخصص للعملاء</h1>
+          <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed mb-6">
+            حسابك حساب {accountRole === 'firm' ? 'مكتب' : 'محامي'}، ويمكنك متابعة عملك من لوحة أدواتك.
+          </p>
+          <a href={accountRole === 'firm' ? '/firm-dashboard' : '/lawyer-tools'} className="inline-block px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal']">
+            الذهاب إلى {accountRole === 'firm' ? 'لوحة التحكم' : 'أدواتي'}
           </a>
         </div>
       </div>
     )
   }
 
-  function renderFirmCard(firm: Firm) {
-    const profileLink = '/firms/' + firm.id
-    const featured = isFeaturedActive(firm)
-
-    return (
-      <div key={firm.id} className={"bg-white rounded-lg p-6 hover:shadow-lg transition relative " + (featured ? 'border-2 border-[#AD8A4E]' : 'border border-[#D8D2C4]')}>
-        {featured && (
-          <div className="absolute top-3 right-3 bg-[#AD8A4E] text-white text-xs font-['Tajawal'] px-2 py-1 rounded-full">
-            إعلان
-          </div>
-        )}
-
-        <div className="flex items-center gap-4 mb-4">
-          <div className="w-16 h-16 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-2xl">
-            {firm.firm_name.charAt(0)}
-          </div>
-          <div>
-            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{firm.firm_name}</h3>
-            <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">مكتب محاماة</p>
-          </div>
-        </div>
-
-        {firm.bio && (
-          <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4 line-clamp-2">{firm.bio}</p>
-        )}
-
-        <div className="flex justify-between items-center pt-4 border-t border-[#D8D2C4]">
-          <span className="font-['Tajawal'] text-sm text-[#4A473F]">{firm.city || ''}</span>
-          <a href={profileLink} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition">
-            عرض الملف
-          </a>
-        </div>
-      </div>
-    )
-  }
+  const resultsCount = viewMode === 'individuals' ? filteredLawyers.length : filteredFirms.length
+  const gridClass = layout === 'cards' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch' : ''
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg">
+    <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
-            <a href="/">
-              <img src="/logo.png" alt="حمورابي" className="h-10 w-auto" />
-            </a>            <div className="flex gap-5 items-center">
-              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+            <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
+            <div className="flex gap-5 items-center">
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/lawyers" className="text-[#AD8A4E]">دليل المحامين</a>
               <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
-              {isLawyerAccount && (
-                <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
-              )}
-              {isLawyerAccount && (
-                <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
-              )}
-              {isLawyerAccount && (
-                <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
-              )}
+              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
 
-              {!checkingAuth && !loggedIn && (
+              {!loggedIn && (
                 <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
               )}
 
-              {!checkingAuth && loggedIn && (
-                <div className="relative">
-                  <button
-                    onClick={toggleMenu}
-                    className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition"
-                  >
-                    <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" />
-                    </svg>
+              {loggedIn && (
+                <div className="relative" ref={menuRef}>
+                  <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+                    <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
                   </button>
-
                   {menuOpen && (
                     <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
                       {infoLink && (
-                        <a href={infoLink} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">
-                          معلوماتي الشخصية
-                        </a>
+                        <a href={infoLink} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>
                       )}
-                      <button
-                        onClick={handleLogout}
-                        className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]"
-                      >
-                        تسجيل الخروج
-                      </button>
+                      <button onClick={handleLogout} className={"w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition " + (infoLink ? 'border-t border-[#D8D2C4]' : '')}>تسجيل الخروج</button>
                     </div>
                   )}
                 </div>
               )}
             </div>
           </div>
-          <h1 className="font-['Tajawal'] font-bold text-4xl md:text-5xl mb-3">دليل المحامين</h1>          <div className="w-16 h-[2px] bg-[#AD8A4E] mb-6"></div>
-          <p className="font-['Tajawal'] text-[#D8D2C4]">ابحث عن محامٍ موثوق حسب التخصص والمدينة</p>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-3">دليل المحامين</h1>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">ابحث عن محامي موثوق حسب الاختصاص والمدينة</p>
+
+          {!loading && (
+            <div className="flex flex-wrap gap-3 mt-5">
+              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{lawyers.length} محامي</span>
+              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{firms.length} مكتب محاماة</span>
+              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{specialties.length} اختصاصاً</span>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 mb-6 w-fit">
-          <button
-            onClick={function () { setViewMode('individual') }}
-            className={
-              "px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " +
-              (viewMode === 'individual' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
-            }
-          >
-            محامون أفراد
-          </button>
-          <button
-            onClick={function () { setViewMode('firms') }}
-            className={
-              "px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " +
-              (viewMode === 'firms' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')
-            }
-          >
-            مكاتب محاماة
-          </button>
+      <div className="bg-[#F3EEE4] border-b border-[#D8D2C4] py-2 text-center">
+        <a href="/trainee-board" className="font-['Tajawal'] text-sm text-[#1B1A17] hover:text-[#AD8A4E] transition">
+          هل أنت متدرب تبحث عن محامي؟ تصفح لوحة فرص التدريب الآن ←
+        </a>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-6 py-10 flex-1 w-full">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-5">
+          <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 w-fit">
+            <button onClick={function () { setViewMode('individuals') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'individuals' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
+              محامون أفراد{!loading ? ' (' + lawyers.length + ')' : ''}
+            </button>
+            <button onClick={function () { setViewMode('firms') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'firms' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
+              مكاتب محاماة{!loading ? ' (' + firms.length + ')' : ''}
+            </button>
+          </div>
+
+          <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1">
+            <button onClick={function () { setLayout('cards') }} className={"px-4 py-1.5 rounded font-['Tajawal'] text-sm transition " + (layout === 'cards' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>▦ بطاقات</button>
+            <button onClick={function () { setLayout('list') }} className={"px-4 py-1.5 rounded font-['Tajawal'] text-sm transition " + (layout === 'list' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>☰ قائمة</button>
+          </div>
         </div>
 
-        {viewMode === 'individual' && (
-          <div>
-            <div className="flex flex-col md:flex-row gap-4 mb-10">
-              <div className="relative">
-                <select
-                  value={selectedSpecialty ?? ''}
-                  onChange={function (e) { setSelectedSpecialty(e.target.value ? Number(e.target.value) : null) }}
-                  className="w-full appearance-none px-4 py-3 pl-10 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
-                >
-                  <option value="">كل التخصصات</option>
-                  {specialties.map(function (s) {
-                    return <option key={s.id} value={s.id}>{s.name_ar}</option>
-                  })}
-                </select>
-                <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A473F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </div>
+        <div className="bg-white border border-[#D8D2C4] rounded-2xl p-5 mb-6 shadow-sm">
+          <div className="relative mb-4">
+            <svg className="w-5 h-5 text-[#4A473F] absolute right-4 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={function (e) { setSearch(e.target.value) }}
+              placeholder={viewMode === 'individuals' ? 'ابحث بالاسم أو الاختصاص أو المدينة...' : 'ابحث باسم المكتب أو المدينة...'}
+              className="w-full pr-12 pl-4 py-3 bg-[#F3EEE4] border border-transparent focus:border-[#AD8A4E] focus:outline-none rounded-xl font-['Tajawal'] text-[#1B1A17]"
+            />
+          </div>
 
-              <div className="relative">
-                <select
-                  value={selectedCity}
-                  onChange={function (e) { setSelectedCity(e.target.value) }}
-                  className="w-full appearance-none px-4 py-3 pl-10 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E]"
-                >
-                  <option value="">كل المدن</option>
-                  {cityOptions.map(function (city) {
-                    return <option key={city} value={city}>{city}</option>
-                  })}
-                </select>
-                <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4A473F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </div>
+          {viewMode === 'individuals' && (
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+              <button
+                onClick={function () { setSelectedSpecialty('') }}
+                className={"flex-shrink-0 px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (selectedSpecialty === '' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F] hover:border-[#AD8A4E]')}
+              >
+                كل الاختصاصات
+              </button>
+              {specialties.map(function (s) {
+                const isActive = selectedSpecialty === String(s.id)
+                return (
+                  <button
+                    key={s.id}
+                    onClick={function () { setSelectedSpecialty(isActive ? '' : String(s.id)) }}
+                    className={"flex-shrink-0 px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (isActive ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F] hover:border-[#AD8A4E]')}
+                  >
+                    {s.name_ar}
+                  </button>
+                )
+              })}
             </div>
+          )}
 
-            {loading && <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <select value={selectedCity} onChange={function (e) { setSelectedCity(e.target.value) }} className="px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+              <option value="">كل المدن</option>
+              {cityOptions.map(function (c) { return <option key={c} value={c}>{c}</option> })}
+            </select>
 
-            {!loading && filteredLawyers.length === 0 && (
-              <p className="font-['Tajawal'] text-[#4A473F]">لا يوجد محامون مطابقون لهذا البحث حالياً</p>
+            {viewMode === 'individuals' && (
+              <select value={sortBy} onChange={function (e) { setSortBy(e.target.value) }} className="px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                <option value="default">الأنسب (المتاحون أولاً)</option>
+                <option value="rating">الأعلى تقييماً</option>
+                <option value="experience">الأكثر خبرة</option>
+                <option value="fee">الأقل سعراً</option>
+              </select>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {viewMode === 'individuals' && (
+              <label className="flex items-center gap-2 font-['Tajawal'] text-sm text-[#4A473F] cursor-pointer">
+                <input type="checkbox" checked={onlyAvailable} onChange={function (e) { setOnlyAvailable(e.target.checked) }} />
+                المتاحون فقط
+              </label>
+            )}
+
+            {hasActiveFilters && (
+              <button onClick={clearFilters} className="mr-auto font-['Tajawal'] text-xs text-[#AD8A4E] underline">مسح الفلاتر</button>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-[#1B1A17] text-[#F3EEE4] rounded-2xl p-5 mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="font-['Tajawal'] font-bold mb-1">لا تعرف أي اختصاص تحتاجه؟</p>
+            <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">صف مشكلتك للمساعد الذكي وسيقترح عليك الاختصاص المناسب.</p>
+          </div>
+          <a href="/ai-assistant" className="flex-shrink-0 px-5 py-2 bg-[#AD8A4E] text-white hover:bg-[#c49b58] transition rounded-md font-['Tajawal'] text-sm">جرّب المساعد الذكي</a>
+        </div>
+
+        {!loading && (
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">
+            {resultsCount} {viewMode === 'individuals' ? 'محامي' : 'مكتب'}
+          </p>
+        )}
+
+        {loading && (
+          <div className={layout === 'cards' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5' : ''}>
+            {[1, 2, 3, 4, 5, 6].map(function (i) {
+              return <div key={i} className={(layout === 'cards' ? 'h-72' : 'h-20 mb-3') + ' bg-white border border-[#D8D2C4] rounded-2xl animate-pulse'}></div>
+            })}
+          </div>
+        )}
+
+        {!loading && viewMode === 'individuals' && (
+          <div>
+            {filteredLawyers.length === 0 && renderEmpty('لا يوجد محامون مطابقون')}
+            <div className={gridClass}>
               {filteredLawyers.map(renderLawyerCard)}
             </div>
           </div>
         )}
 
-        {viewMode === 'firms' && (
+        {!loading && viewMode === 'firms' && (
           <div>
-            {loading && <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>}
-
-            {!loading && sortedFirms.length === 0 && (
-              <p className="font-['Tajawal'] text-[#4A473F]">لا يوجد مكاتب محاماة مسجلة حالياً</p>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {sortedFirms.map(renderFirmCard)}
+            {filteredFirms.length === 0 && renderEmpty(firms.length === 0 ? 'لا يوجد مكاتب محاماة مسجلة حالياً' : 'لا توجد مكاتب مطابقة')}
+            <div className={gridClass}>
+              {filteredFirms.map(renderFirmCard)}
             </div>
           </div>
         )}
       </div>
+
+      <Footer variant="customer" />
     </div>
   )
 }

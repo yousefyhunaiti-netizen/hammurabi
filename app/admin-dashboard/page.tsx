@@ -401,7 +401,7 @@ export default function AdminDashboardPage() {
   function getAccountNameForDiscount(d: Discount) {
     if (d.account_type === 'lawyer') {
       const found = allLawyers.find(function (l) { return l.id === d.account_id })
-      return found ? found.full_name : 'محامٍ #' + d.account_id
+      return found ? found.full_name : 'محامي #' + d.account_id
     }
     const found = allFirms.find(function (f) { return f.id === d.account_id })
     return found ? found.firm_name : 'مكتب #' + d.account_id
@@ -675,7 +675,7 @@ export default function AdminDashboardPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
-            <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-4">الطلب حسب التخصص</h3>
+            <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-4">الطلب حسب الاختصاص</h3>
             {specialtyHeatmap.length === 0 && <p className="font-['Tajawal'] text-xs text-[#4A473F]">لا توجد بيانات بعد</p>}
             {specialtyHeatmap.map(function (entry) {
               return (
@@ -705,12 +705,12 @@ export default function AdminDashboardPage() {
 
           {!discountSelected && (
             <div>
-              <input type="text" value={discountSearch} onChange={function (e) { setDiscountSearch(e.target.value) }} placeholder="ابحث باسم محامٍ أو مكتب..." className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <input type="text" value={discountSearch} onChange={function (e) { setDiscountSearch(e.target.value) }} placeholder="ابحث باسم محامي أو مكتب..." className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
               {discountSearchResults.map(function (r) {
                 function selectClick() { selectDiscountAccount(r) }
                 return (
                   <button key={r.type + '-' + r.id} onClick={selectClick} className="block w-full text-right px-3 py-2 bg-[#F3EEE4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17] mb-1">
-                    {r.name} <span className="text-xs text-[#4A473F]">({r.type === 'lawyer' ? 'محامٍ' : 'مكتب'})</span>
+                    {r.name} <span className="text-xs text-[#4A473F]">({r.type === 'lawyer' ? 'محامي' : 'مكتب'})</span>
                   </button>
                 )
               })}
@@ -766,7 +766,7 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
             <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">حسابات مجانية - محامون</h2>
-            <input type="text" value={lawyerSearch} onChange={function (e) { setLawyerSearch(e.target.value) }} placeholder="ابحث عن اسم محامٍ..." className="w-full px-3 py-2 mb-4 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            <input type="text" value={lawyerSearch} onChange={function (e) { setLawyerSearch(e.target.value) }} placeholder="ابحث عن اسم محامي..." className="w-full px-3 py-2 mb-4 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
             <div className="max-h-96 overflow-y-auto">
               {filteredLawyersForSearch.map(renderLawyerCompedRow)}
             </div>

@@ -324,7 +324,7 @@ export default function LawyerDashboardPage() {
             </div>
 
             <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-2">التخصصات (يمكن اختيار أكثر من واحد)</label>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-2">الاختصاصات (يمكن اختيار أكثر من واحد)</label>
               <div className="flex flex-wrap gap-2">
                 {specialties.map(function (s) {
                   const isSelected = selectedSpecialties.indexOf(s.id) !== -1
@@ -409,7 +409,7 @@ export default function LawyerDashboardPage() {
             </div>
 
             <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رقم النقابة</label>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">الرقم النقابي</label>
               <input
                 type="text"
                 value={barNumber}

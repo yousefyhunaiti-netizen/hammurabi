@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import Footer from '../components/Footer'
 
 function CheckoutContent() {
   const searchParams = useSearchParams()
@@ -15,12 +16,8 @@ function CheckoutContent() {
   const accountType = searchParams.get('accountType') || ''
   const accountId = Number(searchParams.get('accountId') || '0')
 
-  const [checkingAuth, setCheckingAuth] = useState(true)
-  const [loggedIn, setLoggedIn] = useState(false)
-  const [infoLink, setInfoLink] = useState('')
   const [isLawyerAccount, setIsLawyerAccount] = useState(false)
   const [isFirmAccount, setIsFirmAccount] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
 
   const [cardName, setCardName] = useState('')
   const [cardNumber, setCardNumber] = useState('')
@@ -36,36 +33,25 @@ function CheckoutContent() {
       const user = userResult.data.user
 
       if (user) {
-        setLoggedIn(true)
-
         const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
         if (lawyerResult.data) {
-          setInfoLink('/lawyer-info')
           setIsLawyerAccount(true)
         } else {
           const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
           if (firmResult.data) {
-            setInfoLink('/firm-info')
             setIsFirmAccount(true)
           }
         }
       }
-
-      setCheckingAuth(false)
     }
 
     checkAccount()
   }, [])
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    setLoggedIn(false)
-    setMenuOpen(false)
-    router.push('/')
-  }
-
-  function toggleMenu() {
-    setMenuOpen(!menuOpen)
+  function getFooterVariant(): 'customer' | 'lawyer' | 'firm' {
+    if (isLawyerAccount) return 'lawyer'
+    if (isFirmAccount) return 'firm'
+    return 'customer'
   }
 
   function getOrderLabel() {
@@ -171,53 +157,17 @@ function CheckoutContent() {
 
   function renderNavAndHeader(title: string) {
     return (
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-8 px-6">
+      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-2xl mx-auto">
-          <div className="flex justify-between items-center mb-6 font-['Tajawal'] text-sm">
+          <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/">
-              <img src="/logo.png" alt="حمورابي" className="h-10 w-auto" />
+              <img src="/logo.png" alt="حمورابي" className="h-12 w-auto" />
             </a>
-            <div className="flex gap-4 items-center">
-              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
-              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
-              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
-              {isLawyerAccount && (
-                <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
-              )}
-              {isFirmAccount && (
-                <a href="/firm-dashboard" className="hover:text-[#AD8A4E] transition">أدواتي</a>
-              )}
-              {(isLawyerAccount || isFirmAccount) && (
-                <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
-              )}
-              {(isLawyerAccount || isFirmAccount) && (
-                <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
-              )}
-
-              {!checkingAuth && loggedIn && (
-                <div className="relative">
-                  <button onClick={toggleMenu} className="w-7 h-7 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
-                    <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" />
-                    </svg>
-                  </button>
-                  {menuOpen && (
-                    <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
-                      {infoLink && (
-                        <a href={infoLink} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">
-                          معلوماتي الشخصية
-                        </a>
-                      )}
-                      <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">
-                        تسجيل الخروج
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <a href="/subscription" className="px-4 py-2 bg-white/10 border border-white/20 rounded-md hover:bg-white/20 transition">
+              ← العودة للاشتراك
+            </a>
           </div>
-          <h1 className="font-['Tajawal'] font-bold text-3xl">{title}</h1>
+          <h1 className="font-['Tajawal'] font-bold text-4xl">{title}</h1>
         </div>
       </div>
     )
@@ -225,9 +175,9 @@ function CheckoutContent() {
 
   if (success) {
     return (
-      <div dir="rtl" className="min-h-screen pattern-bg">
+      <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
         {renderNavAndHeader('تم الدفع بنجاح')}
-        <div className="flex items-center justify-center px-6 py-16">
+        <div className="flex-1 flex items-center justify-center px-6 py-16">
           <div className="text-center max-w-md">
             <div className="bg-white border-2 border-[#2F4538] rounded-lg p-8">
               <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">تم الدفع بنجاح</h1>
@@ -238,15 +188,16 @@ function CheckoutContent() {
             </div>
           </div>
         </div>
+        <Footer variant={getFooterVariant()} />
       </div>
     )
   }
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg">
+    <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
       {renderNavAndHeader('إتمام الدفع')}
 
-      <div className="flex items-center justify-center px-6 py-12">
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-md">
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
             <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">ملخص الطلب</p>
@@ -324,6 +275,8 @@ function CheckoutContent() {
           </form>
         </div>
       </div>
+
+      <Footer variant={getFooterVariant()} />
     </div>
   )
 }

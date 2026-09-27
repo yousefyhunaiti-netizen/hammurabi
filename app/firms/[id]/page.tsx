@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
+import Footer from '../../components/Footer'
 
 type Firm = {
   id: number
@@ -70,7 +71,19 @@ export default function FirmDetailPage() {
   const [consultSubmitted, setConsultSubmitted] = useState(false)
 
   const supabase = createClient()
+  const menuRef = useRef<HTMLDivElement>(null)
 
+  useEffect(function () {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return function () {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
   useEffect(function () {
     async function loadData() {
       const userResult = await supabase.auth.getUser()
@@ -388,7 +401,7 @@ export default function FirmDetailPage() {
   const yearsSinceFounded = firm.founded_year ? new Date().getFullYear() - firm.founded_year : null
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg">
+    <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-14 px-6">
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
@@ -396,18 +409,18 @@ export default function FirmDetailPage() {
               <img src="/logo.png" alt="حمورابي" className="h-12 w-auto" />
             </a>
             <div className="flex gap-5 items-center">
-              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
-              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
-              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
 
               {!checkingAuth && !loggedIn && (
                 <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
               )}
 
               {!checkingAuth && loggedIn && (
-                <div className="relative">
+                <div className="relative" ref={menuRef}>
                   <button
                     onClick={toggleMenu}
                     className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition"
@@ -449,8 +462,8 @@ export default function FirmDetailPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="md:col-span-2">
+      <div className="max-w-4xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8 flex-1 w-full">
+                <div className="md:col-span-2">
           {firm.bio && (
             <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
               <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-3">نبذة عن المكتب</h2>
@@ -490,7 +503,7 @@ export default function FirmDetailPage() {
                 )}
                 {firmSpecialtyNames && (
                   <div>
-                    <p className="text-[#4A473F] mb-1">التخصصات المتوفرة</p>
+                    <p className="text-[#4A473F] mb-1">الاختصاصات المتوفرة</p>
                     <p className="text-[#1B1A17] font-medium">{firmSpecialtyNames}</p>
                   </div>
                 )}
@@ -538,7 +551,7 @@ export default function FirmDetailPage() {
                 onChange={function (e) { setSelectedSpecialtyId(e.target.value) }}
                 className="w-full px-3 py-2 mb-4 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
               >
-                <option value="">اختر التخصص</option>
+                <option value="">اختر الاختصاص</option>
                 {specialties
                   .filter(function (s) { return roster.some(function (l) { return l.specialty_id === s.id }) })
                   .map(function (s) {
@@ -639,6 +652,8 @@ export default function FirmDetailPage() {
           </div>
         </div>
       </div>
+
+      <Footer variant="customer" />
     </div>
   )
 }

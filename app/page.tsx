@@ -178,11 +178,11 @@ export default function HomePage() {
           <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-3 gap-6 text-center">
             <div>
               <p className="font-['Tajawal'] font-bold text-5xl md:text-6xl text-[#AD8A4E]">{lawyerCount}+</p>
-              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">محامٍ موثوق</p>
+              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">محامي موثوق</p>
             </div>
             <div>
               <p className="font-['Tajawal'] font-bold text-5xl md:text-6xl text-[#AD8A4E]">{specialtyCount}+</p>
-              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">تخصص قانوني</p>
+              <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-2">اختصاص قانوني</p>
             </div>
             <div>
               <p className="font-['Tajawal'] font-bold text-5xl md:text-6xl text-[#AD8A4E]">{cityCount}+</p>
@@ -211,7 +211,7 @@ export default function HomePage() {
               </svg>
             </div>
             <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">محامون موثقون</h3>
-            <p className="font-['Tajawal'] text-sm text-[#4A473F]">كل محامٍ يخضع للمراجعة قبل الظهور على المنصة</p>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F]">كل محامي يخضع للمراجعة قبل الظهور على المنصة</p>
           </div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-8 text-center">
             <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-[#1B1A17] flex items-center justify-center">
@@ -220,14 +220,14 @@ export default function HomePage() {
               </svg>
             </div>
             <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">استشارة سريعة</h3>
-            <p className="font-['Tajawal'] text-sm text-[#4A473F]">اسأل سؤالك واحصل على إجابة موثقة من محامٍ مختص</p>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F]">اسأل سؤالك واحصل على إجابة موثقة من محامي مختص</p>
           </div>
         </div>
       </div>
 
       <div className="bg-[#F3EEE4] border-y border-[#D8D2C4] py-10 text-center">
         <a href="/trainee-board" className="inline-block font-['Tajawal'] text-[#1B1A17] hover:text-[#AD8A4E] transition">
-          <span className="font-bold text-lg">هل أنت متدرب تبحث عن محامٍ؟</span>
+          <span className="font-bold text-lg">هل أنت متدرب تبحث عن محامي؟</span>
           <span className="block text-sm text-[#4A473F] mt-1">تصفّح لوحة فرص التدريب المتاحة الآن ←</span>
         </a>
       </div>

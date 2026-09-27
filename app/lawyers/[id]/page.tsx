@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
+import Footer from '../../components/Footer'
 
 type Lawyer = {
   id: number
@@ -69,6 +70,19 @@ export default function LawyerDetailPage() {
   const [consultSubmitted, setConsultSubmitted] = useState(false)
 
   const supabase = createClient()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function () {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return function () {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   useEffect(function () {
     async function loadData() {
@@ -287,31 +301,31 @@ export default function LawyerDetailPage() {
   const phoneLink = 'tel:' + (lawyer.phone || '')
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg">
+    <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
             <div className="flex gap-5 items-center">
-              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
-              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
-              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              <a href="/lawyers" className="hover:text-[#AD8A4E] transition">دليل المحامين</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
 
               {!checkingAuth && !loggedIn && (
                 <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
               )}
 
               {!checkingAuth && loggedIn && (
-                <div className="relative">
+                <div className="relative" ref={menuRef}>
                   <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                     <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
                   </button>
                   {menuOpen && (
                     <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
                       {infoLink && <a href={infoLink} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>}
-                      <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">تسجيل الخروج</button>
+                      <button onClick={handleLogout} className={"w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition " + (infoLink ? 'border-t border-[#D8D2C4]' : '')}>تسجيل الخروج</button>
                     </div>
                   )}
                 </div>
@@ -323,7 +337,7 @@ export default function LawyerDetailPage() {
             {lawyer.photo_url ? (
               <img src={lawyer.photo_url} alt={lawyer.full_name} className="w-24 h-24 rounded-full object-cover flex-shrink-0" />
             ) : (
-              <div className="w-24 h-24 rounded-full bg-[#F3EEE4] flex items-center justify-center text-[#1B1A17] font-['Amiri'] text-3xl flex-shrink-0">
+              <div className="w-24 h-24 rounded-full bg-[#F3EEE4] flex items-center justify-center text-[#1B1A17] font-['Tajawal'] font-bold text-3xl flex-shrink-0">
                 {lawyer.full_name.charAt(0)}
               </div>
             )}
@@ -338,7 +352,7 @@ export default function LawyerDetailPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="max-w-4xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8 flex-1 w-full">
         <div className="md:col-span-2">
           {lawyer.bio && (
             <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
@@ -351,7 +365,7 @@ export default function LawyerDetailPage() {
             <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">التفاصيل</h2>
             <div className="grid grid-cols-2 gap-4 font-['Tajawal'] text-sm mb-4">
               <div><p className="text-[#4A473F]">سنوات الخبرة</p><p className="text-[#1B1A17] font-medium">{lawyer.years_experience || 0}</p></div>
-              <div><p className="text-[#4A473F]">رقم النقابة</p><p className="text-[#1B1A17] font-medium">{lawyer.bar_certificate_number || '-'}</p></div>
+              <div><p className="text-[#4A473F]">الرقم النقابي</p><p className="text-[#1B1A17] font-medium">{lawyer.bar_certificate_number || '-'}</p></div>
               <div><p className="text-[#4A473F]">المدينة</p><p className="text-[#1B1A17] font-medium">{getAllCities()}</p></div>
               <div><p className="text-[#4A473F]">العنوان</p><p className="text-[#1B1A17] font-medium">{lawyer.address || '-'}</p></div>
               {lawyer.hourly_rate_range && (
@@ -437,6 +451,8 @@ export default function LawyerDetailPage() {
           </div>
         </div>
       </div>
+
+      <Footer variant="customer" />
     </div>
   )
 }
