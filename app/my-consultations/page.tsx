@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import Footer from '../components/Footer'
+import RatingForm, { RatingStars } from '../components/RatingForm'
 
 type Consultation = {
   id: number
@@ -36,6 +37,8 @@ export default function MyConsultationsPage() {
   const [notAllowed, setNotAllowed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [payingId, setPayingId] = useState<number | null>(null)
+  const [customerId, setCustomerId] = useState<number | null>(null)
+  const [myRatings, setMyRatings] = useState<{ [consultationId: number]: number }>({})
 
   const supabase = createClient()
   const router = useRouter()
@@ -73,6 +76,15 @@ export default function MyConsultationsPage() {
       if (firmCheck.data) {
         router.push('/firm-consultations')
         return
+      }
+
+      const customerResult = await supabase.from('customers').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      if (customerResult.data) {
+        setCustomerId(customerResult.data.id)
+        const ratingsResult = await supabase.from('reviews').select('consultation_id, rating').eq('customer_id', customerResult.data.id).not('consultation_id', 'is', null)
+        const ratingsMap: { [consultationId: number]: number } = {}
+        ;(ratingsResult.data || []).forEach(function (r) { ratingsMap[r.consultation_id] = r.rating })
+        setMyRatings(ratingsMap)
       }
 
       const result = await supabase
@@ -146,16 +158,40 @@ export default function MyConsultationsPage() {
     return ''
   }
 
+  // Who the customer rates: the lawyer when the customer can see who answered,
+  // otherwise the firm (a firm that hides its lawyers' names).
+  function getRatingTarget(c: Consultation) {
+    if (c.lawyer_id) {
+      const lawyer = lawyerInfos.find(function (l) { return l.id === c.lawyer_id })
+      if (lawyer && lawyer.firm_id) {
+        const firm = firms.find(function (f) { return f.id === lawyer.firm_id })
+        if (firm && !firm.show_lawyer_names) return { lawyerId: null, firmId: firm.id, label: 'المكتب' }
+      }
+      return { lawyerId: c.lawyer_id, firmId: null, label: 'المحامي' }
+    }
+    if (c.firm_id) return { lawyerId: null, firmId: c.firm_id, label: 'المكتب' }
+    return null
+  }
+
   const statusLabels: { [key: string]: string } = {
     pending: 'بانتظار الإجابة',
     answered: 'تمت الإجابة',
-    needs_meeting: 'يحتاج جلسة كاملة',
+    needs_meeting: 'يحتاج موعداً',
     paid: 'مدفوعة',
   }
 
   function renderConsultation(c: Consultation) {
     function payClick() {
       handlePay(c.id)
+    }
+
+    const myRating = myRatings[c.id]
+    const ratingTarget = getRatingTarget(c)
+
+    function ratingSaved(value: number) {
+      const next = Object.assign({}, myRatings)
+      next[c.id] = value
+      setMyRatings(next)
     }
 
     return (
@@ -186,10 +222,33 @@ export default function MyConsultationsPage() {
           </div>
         )}
 
+        {c.status === 'paid' && myRating && (
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-3">تقييمك: <RatingStars rating={myRating} /></p>
+        )}
+
+        {c.status === 'paid' && !myRating && ratingTarget && customerId !== null && (
+          <div className="mt-3">
+            <RatingForm
+              customerId={customerId}
+              lawyerId={ratingTarget.lawyerId}
+              firmId={ratingTarget.firmId}
+              consultationId={c.id}
+              targetLabel={ratingTarget.label}
+              onSaved={ratingSaved}
+            />
+          </div>
+        )}
+
         {c.status === 'needs_meeting' && (
-          <a href={c.lawyer_id ? '/lawyers/' + c.lawyer_id : '/firms/' + c.firm_id} className="inline-block px-4 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm">
-            حجز جلسة كاملة
-          </a>
+          <div className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-4">
+            <p className="font-['Tajawal'] text-sm text-[#1B1A17] mb-2">يرى المحامي أن مسألتك تحتاج دراسة أعمق من إجابة مكتوبة، ويوصيك بحجز موعد. لن تُحتسب عليك رسوم الاستشارة، ويُتفق على الأتعاب في الموعد.</p>
+            {c.answer && (
+              <p className="font-['Tajawal'] text-sm text-[#4A473F] whitespace-pre-wrap mb-3">ملاحظة المحامي: {c.answer}</p>
+            )}
+            <a href={c.lawyer_id ? '/lawyers/' + c.lawyer_id : '/firms/' + c.firm_id} className="inline-block px-4 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm">
+              احجز موعداً
+            </a>
+          </div>
         )}
       </div>
     )

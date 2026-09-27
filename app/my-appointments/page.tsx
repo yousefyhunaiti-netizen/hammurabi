@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import Footer from '../components/Footer'
+import RatingForm, { RatingStars } from '../components/RatingForm'
 
 type Appointment = {
   id: number
@@ -26,6 +27,14 @@ type FirmName = {
   firm_name: string
 }
 
+// An appointment counts as finished one hour after its start time
+function hasEnded(a: Appointment) {
+  const dateParts = a.appointment_date.split('-').map(Number)
+  const timeParts = (a.time_slot || '00:00').split(':').map(Number)
+  const start = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0] || 0, timeParts[1] || 0)
+  return start.getTime() + 60 * 60 * 1000 < Date.now()
+}
+
 function formatDateDisplay(dateStr: string) {
   const parts = dateStr.split('-')
   if (parts.length !== 3) return dateStr
@@ -41,6 +50,8 @@ export default function MyAppointmentsPage() {
   const [showCancelled, setShowCancelled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [cancellingId, setCancellingId] = useState<number | null>(null)
+  const [customerId, setCustomerId] = useState<number | null>(null)
+  const [myRatings, setMyRatings] = useState<{ [appointmentId: number]: number }>({})
 
   const supabase = createClient()
   const router = useRouter()
@@ -78,6 +89,15 @@ export default function MyAppointmentsPage() {
       if (firmCheck.data) {
         router.push('/firm-appointments')
         return
+      }
+
+      const customerResult = await supabase.from('customers').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      if (customerResult.data) {
+        setCustomerId(customerResult.data.id)
+        const ratingsResult = await supabase.from('reviews').select('appointment_id, rating').eq('customer_id', customerResult.data.id).not('appointment_id', 'is', null)
+        const ratingsMap: { [appointmentId: number]: number } = {}
+        ;(ratingsResult.data || []).forEach(function (r) { ratingsMap[r.appointment_id] = r.rating })
+        setMyRatings(ratingsMap)
       }
 
       const apptResult = await supabase
@@ -148,6 +168,15 @@ export default function MyAppointmentsPage() {
     const isCancelled = a.status === 'cancelled'
     const typeLabel = a.consultation_type === 'video' ? 'عبر الفيديو' : 'حضوري'
     const withWho = a.lawyer_id ? getLawyerName(a.lawyer_id) : getFirmName(a.firm_id)
+    const ended = hasEnded(a)
+    const myRating = myRatings[a.id]
+    const canRate = !isCancelled && ended && !myRating && customerId !== null && (a.lawyer_id || a.firm_id)
+
+    function ratingSaved(value: number) {
+      const next = Object.assign({}, myRatings)
+      next[a.id] = value
+      setMyRatings(next)
+    }
 
     function cancelClick() {
       handleCancel(a.id)
@@ -165,10 +194,25 @@ export default function MyAppointmentsPage() {
             رابط الاجتماع
           </a>
         )}
-        {!isCancelled && (
+        {!isCancelled && !ended && (
           <button onClick={cancelClick} disabled={cancellingId === a.id} className="font-['Tajawal'] text-xs text-[#7A2E2E]">
             {cancellingId === a.id ? 'جاري الإلغاء...' : 'إلغاء الموعد'}
           </button>
+        )}
+        {myRating && (
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-2">تقييمك: <RatingStars rating={myRating} /></p>
+        )}
+        {canRate && customerId !== null && (
+          <div className="mt-2">
+            <RatingForm
+              customerId={customerId}
+              lawyerId={a.lawyer_id ? a.lawyer_id : null}
+              firmId={a.lawyer_id ? null : a.firm_id}
+              appointmentId={a.id}
+              targetLabel={a.lawyer_id ? 'المحامي' : 'المكتب'}
+              onSaved={ratingSaved}
+            />
+          </div>
         )}
       </div>
     )

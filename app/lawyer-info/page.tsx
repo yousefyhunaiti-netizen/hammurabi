@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Lawyer = {
@@ -94,8 +95,7 @@ export default function LawyerInfoPage() {
     const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
     setTotalUnread(countConversations(unreadResult.data || []))
 
-    const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-    setPendingConsultations(pendingResult.count || 0)
+    setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
     if (lawyerResult.data.specialty_id) {
       const specialtyResult = await supabase
@@ -277,7 +277,7 @@ export default function LawyerInfoPage() {
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <div className="flex items-center gap-5 mb-5">
-            <div className="w-20 h-20 rounded-full bg-[#1B1A17] text-[#F3EEE4] flex items-center justify-center font-['Amiri'] text-3xl flex-shrink-0">
+            <div className="w-20 h-20 rounded-full bg-[#1B1A17] text-[#F3EEE4] flex items-center justify-center font-['Tajawal'] font-bold text-3xl flex-shrink-0">
               {lawyer.full_name.charAt(0)}
             </div>
             <div>

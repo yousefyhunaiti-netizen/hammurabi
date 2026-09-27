@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -50,6 +51,7 @@ export default function LawyerInvoicesPage() {
   const [loading, setLoading] = useState(true)
   const [accountType, setAccountType] = useState<'lawyer' | 'firm'>('lawyer')
   const [accountId, setAccountId] = useState<number | null>(null)
+  const [lawyerFullName, setLawyerFullName] = useState('')
   const [notAllowed, setNotAllowed] = useState(false)
   const [notSubscribed, setNotSubscribed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -204,7 +206,7 @@ export default function LawyerInvoicesPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, savings_goal_percent').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, full_name, is_active, is_comped, savings_goal_percent').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
@@ -215,13 +217,13 @@ export default function LawyerInvoicesPage() {
 
         setAccountType('lawyer')
         setAccountId(lawyerResult.data.id)
+        setLawyerFullName(lawyerResult.data.full_name || '')
         setSavingsGoalPercent(lawyerResult.data.savings_goal_percent ? String(lawyerResult.data.savings_goal_percent) : '')
 
         const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
         setTotalUnread(countConversations(unreadResult.data || []))
 
-        const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-        setPendingConsultations(pendingResult.count || 0)
+        setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
         await loadAll('lawyer', lawyerResult.data.id, [])
         setLoading(false)
@@ -255,12 +257,7 @@ export default function LawyerInvoicesPage() {
       const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmRow.id).eq('is_read', false)
       setTotalUnread(countConversations(firmUnreadResult.data || []))
 
-      let pendingFilter = 'firm_id.eq.' + firmRow.id
-      if (rosterIds.length > 0) {
-        pendingFilter = pendingFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
-      }
-      const firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('status', 'pending').or(pendingFilter)
-      setPendingConsultations(firmPendingResult.count || 0)
+      setPendingConsultations(await getFirmBadgeCount(supabase, firmRow.id))
 
       await loadAll('firm', firmRow.id, rosterIds)
       setLoading(false)
@@ -732,7 +729,7 @@ export default function LawyerInvoicesPage() {
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى الفواتير</h1>
+            <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى الفواتير</h1>
             <a href="/subscription" className="inline-block mt-4 px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">عرض خطط الاشتراك</a>
           </div>
         </div>
@@ -879,7 +876,8 @@ export default function LawyerInvoicesPage() {
                 return cleaned
               }
 
-              const message = 'مرحباً ' + inv.client_name + '، هذا تذكير بخصوص فاتورة بمبلغ ' + inv.amount + ' د.أ مستحقة منذ ' + inv.due_date + '. نرجو التكرم بالسداد في أقرب وقت ممكن. شكراً لكم.'
+              const senderLine = lawyerFullName ? 'معك مكتب المحامي ' + lawyerFullName + '. ' : ''
+              const message = 'مرحباً ' + inv.client_name + '، ' + senderLine + 'هذا تذكير بخصوص فاتورة بمبلغ ' + inv.amount + ' د.أ مستحقة منذ ' + formatDateDisplay(inv.due_date) + '. نرجو التكرم بالسداد في أقرب وقت ممكن. شكراً لكم.'
               const whatsappLink = inv.client_phone ? 'https://wa.me/' + normalizePhone(inv.client_phone) + '?text=' + encodeURIComponent(message) : ''
 
               return (
@@ -1139,6 +1137,10 @@ export default function LawyerInvoicesPage() {
               <button onClick={handleAddInvoice} disabled={savingInvoice} className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60">
                 {savingInvoice ? 'جاري الإنشاء...' : 'إنشاء فاتورة'}
               </button>
+              <p className="font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed">
+                هذه فاتورة لمتابعة مستحقاتك داخل حمورابي. لإصدار فاتورة ضريبية رسمية، استخدم{' '}
+                <a href="https://portal.jofotara.gov.jo/ar" target="_blank" rel="noopener noreferrer" className="text-[#AD8A4E] underline">نظام الفوترة الوطني (جوفوترة)</a>.
+              </p>
             </div>
           </div>
         )}

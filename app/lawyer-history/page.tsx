@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { markAppointmentsSeen } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Appointment = {
@@ -15,6 +16,7 @@ type Appointment = {
   time_slot: string
   status: string
   consultation_type: string | null
+  created_at: string
 }
 
 type Consultation = {
@@ -65,6 +67,7 @@ export default function LawyerHistoryPage() {
   const [search, setSearch] = useState('')
   const [monthFilter, setMonthFilter] = useState('')
   const [dayFilter, setDayFilter] = useState('')
+  const [lastSeenAppointments, setLastSeenAppointments] = useState<string | null>(null)
 
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation | null>(null)
   const [answerText, setAnswerText] = useState('')
@@ -121,6 +124,9 @@ export default function LawyerHistoryPage() {
         setAccountType('lawyer')
         setAccountId(lawyerResult.data.id)
 
+        const seenResult = await supabase.from('lawyers').select('last_seen_appointments_at').eq('id', lawyerResult.data.id).maybeSingle()
+        setLastSeenAppointments(seenResult.data ? seenResult.data.last_seen_appointments_at : null)
+
         const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
         setTotalUnread(countConversations(unreadResult.data || []))
 
@@ -162,6 +168,7 @@ export default function LawyerHistoryPage() {
 
         setAccountType('firm')
         setAccountId(firmRow.id)
+        setLastSeenAppointments(firmRow.last_seen_appointments_at || null)
 
         const specialtiesResult = await supabase.from('specialties').select('*')
         setSpecialties(specialtiesResult.data || [])
@@ -197,6 +204,9 @@ export default function LawyerHistoryPage() {
 
       setAppointments(apptData)
       setConsultations(consultData)
+
+      // Opening this page clears the "new booking" part of the badge on every page
+      markAppointmentsSeen(supabase)
 
       const allCustomerIds = Array.from(new Set(
         apptData.map(function (a: Appointment) { return a.customer_id })
@@ -264,7 +274,21 @@ export default function LawyerHistoryPage() {
   function getStatusLabel(status: string) {
     if (status === 'pending') return 'بانتظار الرد'
     if (status === 'answered') return 'تمت الإجابة'
+    if (status === 'paid') return 'مدفوعة'
+    if (status === 'needs_meeting') return 'يحتاج موعداً'
     return status
+  }
+
+  function getAppointmentStatusLabel(status: string) {
+    if (status === 'confirmed') return 'مؤكد'
+    if (status === 'completed') return 'مكتمل'
+    if (status === 'cancelled') return 'ملغى'
+    return status
+  }
+
+  function isNewAppointment(a: Appointment) {
+    if (!lastSeenAppointments || !a.created_at) return false
+    return new Date(a.created_at).getTime() > new Date(lastSeenAppointments).getTime()
   }
 
   function formatDateDisplay(dateStr: string) {
@@ -371,16 +395,54 @@ export default function LawyerHistoryPage() {
     setSelectedConsultation(null)
   }
 
+  // The consultation needs more than a written answer: the customer is asked to book
+  // an appointment instead and pays nothing for the consultation.
+  async function handleRecommendMeeting() {
+    if (!selectedConsultation || !accountId || accountType !== 'lawyer') return
+    setSendError('')
+    setSending(true)
+
+    const noteValue = answerText.trim() || null
+    const consultationId = selectedConsultation.id
+
+    const updateResult = await supabase
+      .from('consultations')
+      .update({ answer: noteValue, fee: 0, status: 'needs_meeting' })
+      .eq('id', consultationId)
+      .eq('lawyer_id', accountId)
+      .select('id')
+
+    setSending(false)
+
+    if (updateResult.error || !updateResult.data || updateResult.data.length === 0) {
+      setSendError('تعذر إرسال التوصية، حاول مرة أخرى')
+      return
+    }
+
+    setConsultations(consultations.map(function (c) {
+      if (c.id === consultationId) {
+        return { ...c, answer: noteValue, fee: 0, status: 'needs_meeting' }
+      }
+      return c
+    }))
+    setSelectedConsultation(null)
+  }
+
   function renderAppointment(a: Appointment) {
     const typeLabel = a.consultation_type === 'video' ? 'فيديو' : 'حضوري'
     return (
-      <div key={a.id} className="bg-white border border-[#D8D2C4] rounded-lg p-4 mb-3">
-        <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">{getCustomerName(a.customer_id)}</p>
-        <p className="font-['Tajawal'] text-xs text-[#4A473F]">{a.appointment_date} - {a.time_slot} ({typeLabel})</p>
+      <div key={a.id} className={"bg-white border rounded-lg p-4 mb-3 " + (isNewAppointment(a) ? 'border-[#AD8A4E]' : 'border-[#D8D2C4]')}>
+        <div className="flex items-center gap-2 mb-1">
+          <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{getCustomerName(a.customer_id)}</p>
+          {isNewAppointment(a) && (
+            <span className="px-2 py-0.5 bg-[#AD8A4E] text-white text-[10px] font-['Tajawal'] rounded-full">جديد</span>
+          )}
+        </div>
+        <p className="font-['Tajawal'] text-xs text-[#4A473F]">{formatDateDisplay(a.appointment_date)} - {a.time_slot} ({typeLabel})</p>
         {accountType === 'firm' && (
           <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-1">{getAppOwnerLabel(a)}</p>
         )}
-        <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mt-1">{a.status}</p>
+        <p className={"font-['Tajawal'] text-xs mt-1 " + (a.status === 'cancelled' ? 'text-[#7A2E2E]' : 'text-[#AD8A4E]')}>{getAppointmentStatusLabel(a.status)}</p>
       </div>
     )
   }
@@ -405,7 +467,8 @@ export default function LawyerHistoryPage() {
     if (!selectedConsultation) return null
 
     const c = selectedConsultation
-    const canAnswer = accountType === 'lawyer' && c.lawyer_id === accountId && c.status !== 'answered'
+    const canAnswer = accountType === 'lawyer' && c.lawyer_id === accountId && c.status === 'pending'
+    const hasAnswer = c.status === 'answered' || c.status === 'paid'
 
     function stopPropagation(e: React.MouseEvent) {
       e.stopPropagation()
@@ -460,18 +523,40 @@ export default function LawyerHistoryPage() {
                 {sending ? 'جاري الإرسال...' : 'إرسال الإجابة للعميل'}
               </button>
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-2">بعد الإرسال لا يمكن تعديل الإجابة.</p>
+
+              <div className="mt-5 pt-4 border-t border-[#D8D2C4]">
+                <p className="font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed mb-3">
+                  هل تحتاج المسألة دراسة أعمق من إجابة مكتوبة؟ أوصِ العميل بحجز موعد بدلاً من الإجابة، ولن يدفع رسوم الاستشارة. ما تكتبه في خانة الإجابة يصله كملاحظة.
+                </p>
+                <button
+                  onClick={handleRecommendMeeting}
+                  disabled={sending}
+                  className="w-full py-3 bg-white border border-[#AD8A4E] text-[#AD8A4E] rounded-md font-['Tajawal'] font-medium hover:bg-[#F3EEE4] transition disabled:opacity-60"
+                >
+                  التوصية بحجز موعد
+                </button>
+              </div>
             </div>
           )}
 
-          {!canAnswer && c.status === 'answered' && (
+          {!canAnswer && hasAnswer && (
             <div className="bg-[#2F4538] text-white rounded-md p-4">
               <p className="font-['Tajawal'] font-bold text-sm mb-2">الإجابة المرسلة</p>
               <p className="font-['Tajawal'] text-sm leading-relaxed whitespace-pre-wrap mb-3">{c.answer}</p>
-              <p className="font-['Tajawal'] text-xs text-[#D8D2C4]">المبلغ: {c.fee || 0} دينار</p>
+              <p className="font-['Tajawal'] text-xs text-[#D8D2C4]">المبلغ: {c.fee || 0} دينار{c.status === 'paid' ? ' - مدفوعة' : ' - بانتظار الدفع'}</p>
             </div>
           )}
 
-          {!canAnswer && c.status !== 'answered' && (
+          {!canAnswer && c.status === 'needs_meeting' && (
+            <div className="bg-[#F3EEE4] border border-[#AD8A4E] rounded-md p-4">
+              <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">تمت التوصية بحجز موعد</p>
+              {c.answer && (
+                <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed whitespace-pre-wrap">{c.answer}</p>
+              )}
+            </div>
+          )}
+
+          {!canAnswer && c.status === 'pending' && (
             <div className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-4">
               {!c.lawyer_id ? (
                 <p className="font-['Tajawal'] text-sm text-[#4A473F]">
@@ -511,7 +596,7 @@ export default function LawyerHistoryPage() {
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى السجل</h1>
+            <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى المواعيد والاستشارات</h1>
             <a href="/subscription" className="inline-block mt-4 px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">عرض خطط الاشتراك</a>
           </div>
         </div>
@@ -563,8 +648,8 @@ export default function LawyerHistoryPage() {
               </div>
             </div>
           </div>
-          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">السجل</h1>
-          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">مرجعك الكامل لكل موعد واستشارة سابقة تمت عبر حمورابي</p>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">المواعيد والاستشارات</h1>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">كل مواعيدك واستشاراتك عبر حمورابي في مكان واحد</p>
         </div>
       </div>
 

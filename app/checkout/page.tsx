@@ -180,7 +180,7 @@ function CheckoutContent() {
         <div className="flex-1 flex items-center justify-center px-6 py-16">
           <div className="text-center max-w-md">
             <div className="bg-white border-2 border-[#2F4538] rounded-lg p-8">
-              <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">تم الدفع بنجاح</h1>
+              <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">تم الدفع بنجاح</h1>
               <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-6">تم تفعيل {getOrderLabel()} على حسابك</p>
               <a href="/subscription" className="inline-block px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">
                 العودة إلى الاشتراك

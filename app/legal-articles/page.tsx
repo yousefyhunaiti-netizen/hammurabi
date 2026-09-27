@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Article = {
@@ -13,11 +14,6 @@ type Article = {
   title: string
   body: string
   created_at: string
-}
-
-type Specialty = {
-  id: number
-  name_ar: string
 }
 
 type LawyerName = {
@@ -41,11 +37,9 @@ export default function LegalArticlesPage() {
   const [pendingConsultations, setPendingConsultations] = useState(0)
 
   const [articles, setArticles] = useState<Article[]>([])
-  const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [lawyerNames, setLawyerNames] = useState<LawyerName[]>([])
   const [firmNames, setFirmNames] = useState<FirmName[]>([])
   const [search, setSearch] = useState('')
-  const [specialtyFilter, setSpecialtyFilter] = useState('')
 
   const supabase = createClient()
   const router = useRouter()
@@ -115,8 +109,7 @@ export default function LegalArticlesPage() {
             const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
             setTotalUnread(countConversations(unreadResult.data || []))
 
-            const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-            setPendingConsultations(pendingResult.count || 0)
+            setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
           } else {
             const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) {
@@ -126,23 +119,13 @@ export default function LegalArticlesPage() {
               const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmResult.data.id).eq('is_read', false)
               setTotalUnread(countConversations(firmUnreadResult.data || []))
 
-              const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', firmResult.data.id)
-              const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-              let pendingFilter = 'firm_id.eq.' + firmResult.data.id
-              if (rosterIds.length > 0) {
-                pendingFilter = pendingFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
-              }
-              const firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('status', 'pending').or(pendingFilter)
-              setPendingConsultations(firmPendingResult.count || 0)
+              setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
             }
           }
         }
       }
 
       setCheckingAuth(false)
-
-      const specialtiesResult = await supabase.from('specialties').select('*')
-      setSpecialties(specialtiesResult.data || [])
 
       await loadArticles()
       setLoading(false)
@@ -160,12 +143,6 @@ export default function LegalArticlesPage() {
 
   function toggleMenu() {
     setMenuOpen(!menuOpen)
-  }
-
-  function getSpecialtyName(id: number | null) {
-    if (!id) return ''
-    const found = specialties.find(function (s) { return s.id === id })
-    return found ? found.name_ar : ''
   }
 
   function getLawyerName(id: number | null) {
@@ -191,7 +168,6 @@ export default function LegalArticlesPage() {
   }
 
   const filteredArticles = articles.filter(function (a) {
-    if (specialtyFilter && a.specialty_id !== Number(specialtyFilter)) return false
     if (!search.trim()) return true
     const lower = search.toLowerCase()
     return a.title.toLowerCase().indexOf(lower) !== -1 || a.body.toLowerCase().indexOf(lower) !== -1 || getAuthorLabel(a).toLowerCase().indexOf(lower) !== -1
@@ -200,7 +176,6 @@ export default function LegalArticlesPage() {
   function renderArticle(article: Article) {
     const isFirm = !!article.firm_id
     const authorName = getAuthorLabel(article)
-    const specialtyName = getSpecialtyName(article.specialty_id)
 
     return (
       <div key={article.id} className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-4 hover:shadow-lg transition">
@@ -213,7 +188,7 @@ export default function LegalArticlesPage() {
               <a href={getAuthorLink(article)} className="font-['Tajawal'] font-medium text-sm text-[#1B1A17] hover:text-[#AD8A4E] truncate">{authorName}</a>
               {isFirm && <span className="font-['Tajawal'] text-[10px] px-1.5 py-0.5 rounded bg-[#F0E6D2] text-[#AD8A4E] flex-shrink-0">مكتب</span>}
             </div>
-            <p className="font-['Tajawal'] text-xs text-[#4A473F]">{readingTime(article.body)}{specialtyName ? ' · ' + specialtyName : ''}</p>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F]">{readingTime(article.body)}</p>
           </div>
         </div>
         <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">{article.title}</h3>
@@ -310,7 +285,7 @@ export default function LegalArticlesPage() {
             </div>
           </div>
           <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">مقالات قانونية</h1>
-          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">محتوى موثوق كتبه محامون مرخصون، لمساعدتك على فهم حقوقك القانونية</p>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">محتوى موثوق كتبه محامون مرخصون، لتزيد معرفتك القانونية</p>
         </div>
       </div>
 
@@ -326,29 +301,8 @@ export default function LegalArticlesPage() {
           value={search}
           onChange={function (e) { setSearch(e.target.value) }}
           placeholder="ابحث في المقالات..."
-          className="w-full px-4 py-2.5 mb-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+          className="w-full px-4 py-2.5 mb-6 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
         />
-
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-6">
-          <button
-            onClick={function () { setSpecialtyFilter('') }}
-            className={"flex-shrink-0 px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (specialtyFilter === '' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F]')}
-          >
-            الكل
-          </button>
-          {specialties.map(function (s) {
-            const isActive = specialtyFilter === String(s.id)
-            return (
-              <button
-                key={s.id}
-                onClick={function () { setSpecialtyFilter(isActive ? '' : String(s.id)) }}
-                className={"flex-shrink-0 px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (isActive ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F]')}
-              >
-                {s.name_ar}
-              </button>
-            )
-          })}
-        </div>
 
         <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">{filteredArticles.length} من {articles.length} مقال</p>
 

@@ -170,7 +170,7 @@ export default function QuestionDetailPage() {
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-3xl mx-auto">
           <a href="/community" className="font-['Tajawal'] text-sm text-[#AD8A4E] hover:underline mb-4 inline-block">← العودة للمجتمع</a>
-          <h1 className="font-['Amiri'] text-3xl mb-3">{question.title}</h1>
+          <h1 className="font-['Tajawal'] font-bold text-3xl mb-3">{question.title}</h1>
           {question.specialty_id && (
             <span className="px-3 py-1 bg-[#AD8A4E] text-white text-xs font-['Tajawal'] rounded-full">{getSpecialtyName(question.specialty_id)}</span>
           )}

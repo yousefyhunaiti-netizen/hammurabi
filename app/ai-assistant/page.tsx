@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import ReactMarkdown from 'react-markdown'
 import Footer from '../components/Footer'
 
@@ -54,8 +55,7 @@ export default function AiAssistantPage() {
             }))
             setTotalUnread(uniqueSenders.size)
 
-            const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-            setPendingConsultations(pendingResult.count || 0)
+            setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
           } else {
             const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) {
@@ -68,15 +68,7 @@ export default function AiAssistantPage() {
               }))
               setTotalUnread(firmUniqueSenders.size)
 
-              const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', firmResult.data.id)
-              const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-              let firmPendingResult
-              if (rosterIds.length > 0) {
-                firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).or('firm_id.eq.' + firmResult.data.id + ',lawyer_id.in.(' + rosterIds.join(',') + ')').eq('status', 'pending')
-              } else {
-                firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('firm_id', firmResult.data.id).eq('status', 'pending')
-              }
-              setPendingConsultations(firmPendingResult.count || 0)
+              setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
             }
           }
         }

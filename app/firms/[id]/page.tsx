@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
 import Footer from '../../components/Footer'
+import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
 
 type Firm = {
   id: number
@@ -22,6 +23,12 @@ type Firm = {
 type Specialty = {
   id: number
   name_ar: string
+}
+
+type FirmReview = {
+  id: number
+  rating: number
+  comment: string | null
 }
 
 type FirmLawyer = {
@@ -48,6 +55,7 @@ export default function FirmDetailPage() {
   const [firm, setFirm] = useState<Firm | null>(null)
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [roster, setRoster] = useState<FirmLawyer[]>([])
+  const [reviews, setReviews] = useState<FirmReview[]>([])
   const [loading, setLoading] = useState(true)
   const [loggedIn, setLoggedIn] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -112,6 +120,9 @@ export default function FirmDetailPage() {
 
       const firmResult = await supabase.from('firms').select('*').eq('id', firmId).single()
       setFirm(firmResult.data)
+
+      const reviewsResult = await supabase.from('reviews').select('id, rating, comment').eq('firm_id', firmId).order('created_at', { ascending: false })
+      setReviews(reviewsResult.data || [])
 
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
@@ -399,6 +410,7 @@ export default function FirmDetailPage() {
   const firmSpecialtyIds = Array.from(new Set(roster.map(function (l) { return l.specialty_id })))
   const firmSpecialtyNames = firmSpecialtyIds.map(getSpecialtyName).filter(Boolean).join('، ')
   const yearsSinceFounded = firm.founded_year ? new Date().getFullYear() - firm.founded_year : null
+  const avgRating = reviews.length > 0 ? (reviews.reduce(function (sum, r) { return sum + r.rating }, 0) / reviews.length).toFixed(1) : null
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
@@ -451,12 +463,15 @@ export default function FirmDetailPage() {
           </div>
 
           <div className="flex items-center gap-6">
-            <div className="w-24 h-24 rounded-full bg-[#F3EEE4] flex items-center justify-center text-[#1B1A17] font-['Amiri'] text-3xl flex-shrink-0">
+            <div className="w-24 h-24 rounded-full bg-[#F3EEE4] flex items-center justify-center text-[#1B1A17] font-['Tajawal'] font-bold text-3xl flex-shrink-0">
               {firm.firm_name.charAt(0)}
             </div>
             <div>
               <h1 className="font-['Tajawal'] font-bold text-3xl md:text-4xl mb-1">{firm.firm_name}</h1>
               <p className="font-['Tajawal'] text-[#AD8A4E]">مكتب محاماة{firm.city ? ' - ' + firm.city : ''}</p>
+              {avgRating && (
+                <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-1">⭐ {avgRating} ({reviews.length} تقييم)</p>
+              )}
             </div>
           </div>
         </div>
@@ -528,11 +543,27 @@ export default function FirmDetailPage() {
               )}
             </div>
           </div>
+
+          {reviews.length > 0 && (
+            <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
+              <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">التقييمات</h2>
+              {reviews.map(function (r) {
+                return (
+                  <div key={r.id} className="border-b border-[#D8D2C4] last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
+                    <p className="font-['Tajawal'] text-sm text-[#AD8A4E] mb-1">{'⭐'.repeat(r.rating)}</p>
+                    {r.comment && <p className="font-['Tajawal'] text-sm text-[#4A473F]">{r.comment}</p>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 sticky top-6">
             <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">حجز موعد أو استشارة</h2>
+
+            <BookingGuide />
 
             {firm.show_lawyer_names ? (
               <select
@@ -620,6 +651,9 @@ export default function FirmDetailPage() {
 
             <div className="pt-4 border-t border-[#D8D2C4]">
               <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">استشارة سريعة</h3>
+              <div className="mb-3">
+                <ConsultationFeeNote />
+              </div>
 
               {!consultSubmitted && (
                 <div>

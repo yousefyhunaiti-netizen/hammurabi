@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Post = {
@@ -167,8 +168,7 @@ export default function CommunityPage() {
         }))
         setTotalUnread(uniqueSenders.size)
 
-        const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-        setPendingConsultations(pendingResult.count || 0)
+        setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
         await loadFeed()
         setLoading(false)
@@ -196,15 +196,7 @@ export default function CommunityPage() {
         }))
         setTotalUnread(uniqueSenders.size)
 
-        const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', firmResult.data.id)
-        const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-        let firmPendingResult
-        if (rosterIds.length > 0) {
-          firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).or('firm_id.eq.' + firmResult.data.id + ',lawyer_id.in.(' + rosterIds.join(',') + ')').eq('status', 'pending')
-        } else {
-          firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('firm_id', firmResult.data.id).eq('status', 'pending')
-        }
-        setPendingConsultations(firmPendingResult.count || 0)
+        setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
 
         await loadFeed()
         setLoading(false)
@@ -581,7 +573,7 @@ export default function CommunityPage() {
         <div className="p-5">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-lg flex-shrink-0">
+              <div className="w-11 h-11 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Tajawal'] font-bold text-lg flex-shrink-0">
                 {attributionLabel.charAt(0)}
               </div>
               <div className="flex items-center gap-2">
@@ -724,7 +716,7 @@ export default function CommunityPage() {
           <div className="p-5">
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-lg flex-shrink-0">
+                <div className="w-11 h-11 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Tajawal'] font-bold text-lg flex-shrink-0">
                   {attributionLabel.charAt(0)}
                 </div>
                 <div className="flex items-center gap-2">
@@ -800,7 +792,7 @@ export default function CommunityPage() {
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى المجتمع</h1>
+            <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى المجتمع</h1>
             <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed mb-6">
               يرجى الاشتراك في إحدى الباقات المتاحة للوصول إلى المجتمع.
             </p>

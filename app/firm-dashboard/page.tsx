@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Firm = {
@@ -133,15 +134,7 @@ export default function FirmDashboardPage() {
       }))
       setTotalUnread(uniqueSenders.size)
 
-      const rosterIdsResult = await supabase.from('lawyers').select('id').eq('firm_id', firmResult.data.id)
-      const rosterIdsForBadge = (rosterIdsResult.data || []).map(function (l) { return l.id })
-      let firmPendingResult
-      if (rosterIdsForBadge.length > 0) {
-        firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).or('firm_id.eq.' + firmResult.data.id + ',lawyer_id.in.(' + rosterIdsForBadge.join(',') + ')').eq('status', 'pending')
-      } else {
-        firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('firm_id', firmResult.data.id).eq('status', 'pending')
-      }
-      setPendingConsultations(firmPendingResult.count || 0)
+      setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
 
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
@@ -272,7 +265,7 @@ export default function FirmDashboardPage() {
         {lawyer.photo_url ? (
           <img src={lawyer.photo_url} alt={lawyer.full_name} className="w-14 h-14 rounded-full object-cover mx-auto mb-2" />
         ) : (
-          <div className="w-14 h-14 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Amiri'] text-lg mx-auto mb-2">
+          <div className="w-14 h-14 rounded-full bg-[#1B1A17] flex items-center justify-center text-[#AD8A4E] font-['Tajawal'] font-bold text-lg mx-auto mb-2">
             {lawyer.full_name.charAt(0)}
           </div>
         )}

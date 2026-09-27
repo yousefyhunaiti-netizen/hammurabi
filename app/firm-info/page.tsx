@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Firm = {
@@ -61,15 +62,7 @@ export default function FirmInfoPage() {
       }))
       setTotalUnread(uniqueSenders.size)
 
-      const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', firmResult.data.id)
-      const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-      let firmPendingResult
-      if (rosterIds.length > 0) {
-        firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).or('firm_id.eq.' + firmResult.data.id + ',lawyer_id.in.(' + rosterIds.join(',') + ')').eq('status', 'pending')
-      } else {
-        firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('firm_id', firmResult.data.id).eq('status', 'pending')
-      }
-      setPendingConsultations(firmPendingResult.count || 0)
+      setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
 
       setLoading(false)
     }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Message = {
@@ -177,17 +178,9 @@ export default function LawyerMessagesPage() {
       setAllFirms(firmParticipants)
 
       if (me.type === 'lawyer') {
-        const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', me.id).eq('status', 'pending')
-        setPendingConsultations(pendingResult.count || 0)
+        setPendingConsultations(await getLawyerBadgeCount(supabase, me.id))
       } else {
-        const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', me.id)
-        const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-        let pendingFilter = 'firm_id.eq.' + me.id
-        if (rosterIds.length > 0) {
-          pendingFilter = pendingFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
-        }
-        const firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('status', 'pending').or(pendingFilter)
-        setPendingConsultations(firmPendingResult.count || 0)
+        setPendingConsultations(await getFirmBadgeCount(supabase, me.id))
       }
 
       await loadMessages(me)
@@ -424,7 +417,7 @@ export default function LawyerMessagesPage() {
   function renderAvatar(name: string, type: 'lawyer' | 'firm') {
     const colorClass = type === 'firm' ? 'bg-[#AD8A4E] text-white' : 'bg-[#1B1A17] text-[#F3EEE4]'
     return (
-      <div className={"w-11 h-11 rounded-full flex items-center justify-center font-['Amiri'] text-lg flex-shrink-0 " + colorClass}>
+      <div className={"w-11 h-11 rounded-full flex items-center justify-center font-['Tajawal'] font-bold text-lg flex-shrink-0 " + colorClass}>
         {name.trim().charAt(0)}
       </div>
     )

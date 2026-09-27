@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
 import Footer from '../../components/Footer'
+import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
 
 type Lawyer = {
   id: number
@@ -396,9 +397,12 @@ export default function LawyerDetailPage() {
 
         <div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 sticky top-6">
+            <BookingGuide />
+
             <div className="mb-4 pb-4 border-b border-[#D8D2C4]">
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">رسوم الاستشارة السريعة</p>
-              <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17]">{lawyer.consultation_fee ? lawyer.consultation_fee + ' د.أ' : 'غير محدد'}</p>
+              <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-2">{lawyer.consultation_fee ? lawyer.consultation_fee + ' د.أ' : 'غير محدد'}</p>
+              <ConsultationFeeNote />
             </div>
 
             <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">حجز موعد</h3>

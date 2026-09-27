@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Article = {
@@ -99,8 +100,7 @@ export default function LawyerArticlesPage() {
         const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
         setTotalUnread(countConversations(unreadResult.data || []))
 
-        const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-        setPendingConsultations(pendingResult.count || 0)
+        setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
         await loadArticles('lawyer', lawyerResult.data.id)
         setLoading(false)
@@ -129,14 +129,7 @@ export default function LawyerArticlesPage() {
       const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmRow.id).eq('is_read', false)
       setTotalUnread(countConversations(firmUnreadResult.data || []))
 
-      const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', firmRow.id)
-      const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-      let pendingFilter = 'firm_id.eq.' + firmRow.id
-      if (rosterIds.length > 0) {
-        pendingFilter = pendingFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
-      }
-      const firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('status', 'pending').or(pendingFilter)
-      setPendingConsultations(firmPendingResult.count || 0)
+      setPendingConsultations(await getFirmBadgeCount(supabase, firmRow.id))
 
       await loadArticles('firm', firmRow.id)
       setLoading(false)
@@ -268,7 +261,7 @@ export default function LawyerArticlesPage() {
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى المقالات</h1>
+            <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى المقالات</h1>
             <a href="/subscription" className="inline-block mt-4 px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">عرض خطط الاشتراك</a>
           </div>
         </div>

@@ -34,7 +34,8 @@ type Specialty = {
 }
 
 type Review = {
-  lawyer_id: number
+  lawyer_id: number | null
+  firm_id: number | null
   rating: number
 }
 
@@ -55,6 +56,17 @@ function isOnVacation(l: Lawyer) {
   return !!l.vacation_until && l.vacation_until >= todayString()
 }
 
+function shuffle<T>(items: T[]) {
+  const copy = items.slice()
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const temp = copy[i]
+    copy[i] = copy[j]
+    copy[j] = temp
+  }
+  return copy
+}
+
 export default function LawyersPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -68,7 +80,6 @@ export default function LawyersPage() {
   const [search, setSearch] = useState('')
   const [selectedSpecialty, setSelectedSpecialty] = useState('')
   const [selectedCity, setSelectedCity] = useState('')
-  const [sortBy, setSortBy] = useState('default')
   const [onlyAvailable, setOnlyAvailable] = useState(false)
 
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -123,16 +134,17 @@ export default function LawyersPage() {
 
       setCheckingAuth(false)
 
+      // No ranking: lawyers and firms appear in a random order, shuffled once per visit
       const lawyersResult = await supabase.from('lawyers').select('*').eq('is_approved', true).eq('is_active', true)
-      setLawyers(lawyersResult.data || [])
+      setLawyers(shuffle(lawyersResult.data || []))
 
       const firmsResult = await supabase.from('firms').select('*').eq('is_approved', true).eq('is_active', true)
-      setFirms(firmsResult.data || [])
+      setFirms(shuffle(firmsResult.data || []))
 
-      const specialtiesResult = await supabase.from('specialties').select('*')
+      const specialtiesResult = await supabase.from('specialties').select('*').order('id')
       setSpecialties(specialtiesResult.data || [])
 
-      const reviewsResult = await supabase.from('reviews').select('lawyer_id, rating')
+      const reviewsResult = await supabase.from('reviews').select('lawyer_id, firm_id, rating')
       setReviews(reviewsResult.data || [])
 
       setLoading(false)
@@ -167,16 +179,18 @@ export default function LawyersPage() {
     return [l.city]
   }
 
+  function getFirmRatingInfo(firmId: number) {
+    const firmReviews = reviews.filter(function (r) { return r.firm_id === firmId })
+    if (firmReviews.length === 0) return null
+    const avg = firmReviews.reduce(function (sum, r) { return sum + r.rating }, 0) / firmReviews.length
+    return { avg: avg.toFixed(1), count: firmReviews.length }
+  }
+
   function getRatingInfo(lawyerId: number) {
     const lawyerReviews = reviews.filter(function (r) { return r.lawyer_id === lawyerId })
     if (lawyerReviews.length === 0) return null
     const avg = lawyerReviews.reduce(function (sum, r) { return sum + r.rating }, 0) / lawyerReviews.length
     return { avg: avg.toFixed(1), value: avg, count: lawyerReviews.length }
-  }
-
-  function getRatingValue(lawyerId: number) {
-    const info = getRatingInfo(lawyerId)
-    return info ? info.value : -1
   }
 
   function clearFilters() {
@@ -204,16 +218,10 @@ export default function LawyersPage() {
       return haystack.indexOf(lowerSearch) !== -1
     })
     .sort(function (a, b) {
-      if (sortBy === 'rating') return getRatingValue(b.id) - getRatingValue(a.id)
-      if (sortBy === 'experience') return (b.years_experience || 0) - (a.years_experience || 0)
-      if (sortBy === 'fee') return (a.consultation_fee || 999999) - (b.consultation_fee || 999999)
-
+      // Keeps the random order, only moving lawyers on vacation after available ones
       const vacA = isOnVacation(a) ? 1 : 0
       const vacB = isOnVacation(b) ? 1 : 0
-      if (vacA !== vacB) return vacA - vacB
-      const ratingDiff = getRatingValue(b.id) - getRatingValue(a.id)
-      if (ratingDiff !== 0) return ratingDiff
-      return (b.years_experience || 0) - (a.years_experience || 0)
+      return vacA - vacB
     })
 
   const filteredFirms = firms
@@ -223,7 +231,6 @@ export default function LawyersPage() {
       const haystack = [f.firm_name, f.bio || '', f.city || ''].join(' ').toLowerCase()
       return haystack.indexOf(lowerSearch) !== -1
     })
-    .sort(function (a, b) { return a.firm_name.localeCompare(b.firm_name, 'ar') })
 
   function getFirmLawyerCount(firmId: number) {
     return lawyers.filter(function (l) { return l.firm_id === firmId }).length
@@ -339,6 +346,7 @@ export default function LawyersPage() {
   function renderFirmCard(f: Firm) {
     const lawyerCount = getFirmLawyerCount(f.id)
     const yearsSince = f.founded_year ? new Date().getFullYear() - f.founded_year : null
+    const firmRating = getFirmRatingInfo(f.id)
 
     if (layout === 'list') {
       return (
@@ -352,6 +360,7 @@ export default function LawyersPage() {
           </div>
           <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">👥 {lawyerCount} محامي</div>
           <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">{yearsSince !== null ? '🏛️ خبرة ' + yearsSince + ' سنة' : ''}</div>
+          <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">{firmRating ? '⭐ ' + firmRating.avg + ' (' + firmRating.count + ')' : ''}</div>
           <span className="flex-shrink-0 px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] group-hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-sm">عرض المكتب</span>
         </a>
       )
@@ -375,6 +384,9 @@ export default function LawyersPage() {
           <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F]">👥 {lawyerCount} محامي</span>
           {yearsSince !== null && (
             <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F]">🏛️ خبرة {yearsSince} سنة</span>
+          )}
+          {firmRating && (
+            <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#1B1A17]">⭐ {firmRating.avg} ({firmRating.count} تقييم)</span>
           )}
         </div>
 
@@ -539,15 +551,6 @@ export default function LawyersPage() {
               <option value="">كل المدن</option>
               {cityOptions.map(function (c) { return <option key={c} value={c}>{c}</option> })}
             </select>
-
-            {viewMode === 'individuals' && (
-              <select value={sortBy} onChange={function (e) { setSortBy(e.target.value) }} className="px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-                <option value="default">الأنسب (المتاحون أولاً)</option>
-                <option value="rating">الأعلى تقييماً</option>
-                <option value="experience">الأكثر خبرة</option>
-                <option value="fee">الأقل سعراً</option>
-              </select>
-            )}
 
             {viewMode === 'individuals' && (
               <label className="flex items-center gap-2 font-['Tajawal'] text-sm text-[#4A473F] cursor-pointer">

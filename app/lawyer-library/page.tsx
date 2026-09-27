@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type LibraryItem = {
@@ -19,26 +20,28 @@ type LibraryItem = {
   item_type: string | null
   tags: string[] | null
   law_reference: string | null
+  case_id: number | null
   created_at: string
   updated_at: string | null
 }
 
-type Specialty = {
+type LegalCase = {
   id: number
-  name_ar: string
+  case_number: string
+  client_name: string
 }
 
 const typeOptions = [
   { key: 'law', label: 'قانون', icon: '📜', color: '#AD8A4E' },
-  { key: 'ruling', label: 'اجتهاد قضائي', icon: '⚖️', color: '#2F4538' },
-  { key: 'template', label: 'نموذج', icon: '📝', color: '#3D2B1F' },
-  { key: 'reference', label: 'مرجع', icon: '📚', color: '#7A2E2E' },
-  { key: 'note', label: 'ملاحظة', icon: '🗒️', color: '#4A473F' },
+  { key: 'ruling', label: 'قرار', icon: '⚖️', color: '#2F4538' },
 ]
+
+// Items saved before the library was limited to laws and rulings
+const otherType = { key: 'other', label: 'أخرى', icon: '🗂️', color: '#4A473F' }
 
 function getTypeInfo(key: string | null) {
   const found = typeOptions.find(function (t) { return t.key === key })
-  return found ? found : typeOptions[typeOptions.length - 1]
+  return found ? found : otherType
 }
 
 function formatDate(dateStr: string) {
@@ -66,23 +69,21 @@ export default function LawyerLibraryPage() {
   const [totalUnread, setTotalUnread] = useState(0)
   const [pendingConsultations, setPendingConsultations] = useState(0)
   const [items, setItems] = useState<LibraryItem[]>([])
-  const [specialties, setSpecialties] = useState<Specialty[]>([])
+  const [cases, setCases] = useState<LegalCase[]>([])
 
   const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
-  const [specialtyFilter, setSpecialtyFilter] = useState('')
-  const [tagFilter, setTagFilter] = useState('')
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [sortBy, setSortBy] = useState('updated')
   const [viewMode, setViewMode] = useState('cards')
 
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [itemType, setItemType] = useState('note')
+  const [itemType, setItemType] = useState('law')
   const [title, setTitle] = useState('')
   const [lawReference, setLawReference] = useState('')
   const [content, setContent] = useState('')
   const [link, setLink] = useState('')
-  const [specialtyId, setSpecialtyId] = useState('')
+  const [caseId, setCaseId] = useState('')
   const [tagsInput, setTagsInput] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [existingFileUrl, setExistingFileUrl] = useState('')
@@ -135,9 +136,6 @@ export default function LawyerLibraryPage() {
 
       const userId = userResult.data.user.id
 
-      const specialtiesResult = await supabase.from('specialties').select('*')
-      setSpecialties(specialtiesResult.data || [])
-
       const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
@@ -153,8 +151,10 @@ export default function LawyerLibraryPage() {
         const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
         setTotalUnread(countConversations(unreadResult.data || []))
 
-        const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-        setPendingConsultations(pendingResult.count || 0)
+        setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
+
+        const casesResult = await supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', lawyerResult.data.id).order('id', { ascending: false })
+        setCases(casesResult.data || [])
 
         await loadItems('lawyer', lawyerResult.data.id)
         setLoading(false)
@@ -183,14 +183,7 @@ export default function LawyerLibraryPage() {
       const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmRow.id).eq('is_read', false)
       setTotalUnread(countConversations(firmUnreadResult.data || []))
 
-      const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', firmRow.id)
-      const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-      let pendingFilter = 'firm_id.eq.' + firmRow.id
-      if (rosterIds.length > 0) {
-        pendingFilter = pendingFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
-      }
-      const firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('status', 'pending').or(pendingFilter)
-      setPendingConsultations(firmPendingResult.count || 0)
+      setPendingConsultations(await getFirmBadgeCount(supabase, firmRow.id))
 
       await loadItems('firm', firmRow.id)
       setLoading(false)
@@ -211,12 +204,12 @@ export default function LawyerLibraryPage() {
 
   function resetForm() {
     setEditingId(null)
-    setItemType('note')
+    setItemType('law')
     setTitle('')
     setLawReference('')
     setContent('')
     setLink('')
-    setSpecialtyId('')
+    setCaseId('')
     setTagsInput('')
     setFile(null)
     setExistingFileUrl('')
@@ -231,12 +224,12 @@ export default function LawyerLibraryPage() {
 
   function startEdit(item: LibraryItem) {
     setEditingId(item.id)
-    setItemType(item.item_type || 'note')
+    setItemType(item.item_type === 'ruling' ? 'ruling' : 'law')
     setTitle(item.title)
     setLawReference(item.law_reference || '')
     setContent(item.content || '')
     setLink(item.link || '')
-    setSpecialtyId(item.specialty_id ? String(item.specialty_id) : '')
+    setCaseId(item.case_id ? String(item.case_id) : '')
     setTagsInput((item.tags || []).join('، '))
     setFile(null)
     setExistingFileUrl(item.file_url || '')
@@ -299,15 +292,18 @@ export default function LawyerLibraryPage() {
       title: title.trim(),
       content: content,
       link: link,
-      specialty_id: specialtyId ? Number(specialtyId) : null,
       item_type: itemType,
-      law_reference: itemType === 'law' ? lawReference.trim() : null,
+      law_reference: lawReference.trim() || null,
       tags: parseTags(tagsInput),
       summary: draftSummary || null,
     }
 
     if (uploadedFileUrl) {
       payload.file_url = uploadedFileUrl
+    }
+
+    if (accountType === 'lawyer') {
+      payload.case_id = caseId ? Number(caseId) : null
     }
 
     if (editingId) {
@@ -361,26 +357,17 @@ export default function LawyerLibraryPage() {
     setTimeout(function () { setCopiedId(null) }, 1500)
   }
 
-  function getSpecialtyName(id: number | null) {
+  function getCaseLabel(id: number | null) {
     if (!id) return ''
-    const found = specialties.find(function (s) { return s.id === id })
-    return found ? found.name_ar : ''
-  }
-
-  function clearFilters() {
-    setSearch('')
-    setTypeFilter('')
-    setSpecialtyFilter('')
-    setTagFilter('')
+    const found = cases.find(function (c) { return c.id === id })
+    return found ? 'قضية ' + found.case_number : ''
   }
 
   const lowerSearch = search.trim().toLowerCase()
 
   const filteredItems = items
     .filter(function (item) {
-      if (typeFilter && (item.item_type || 'note') !== typeFilter) return false
-      if (specialtyFilter && item.specialty_id !== Number(specialtyFilter)) return false
-      if (tagFilter && (item.tags || []).indexOf(tagFilter) === -1) return false
+      if (favoritesOnly && !item.is_pinned) return false
       if (!lowerSearch) return true
       const haystack = [item.title, item.content || '', item.summary || '', item.law_reference || '', (item.tags || []).join(' ')].join(' ').toLowerCase()
       return haystack.indexOf(lowerSearch) !== -1
@@ -394,21 +381,7 @@ export default function LawyerLibraryPage() {
       return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()
     })
 
-  const typeCounts: { [key: string]: number } = {}
-  items.forEach(function (item) {
-    const key = item.item_type || 'note'
-    typeCounts[key] = (typeCounts[key] || 0) + 1
-  })
-
-  const tagCounts: { [key: string]: number } = {}
-  items.forEach(function (item) {
-    ;(item.tags || []).forEach(function (t) {
-      tagCounts[t] = (tagCounts[t] || 0) + 1
-    })
-  })
-  const topTags = Object.entries(tagCounts).sort(function (a, b) { return b[1] - a[1] }).slice(0, 12)
-
-  const hasActiveFilters = Boolean(typeFilter || specialtyFilter || tagFilter || lowerSearch)
+  const favoritesCount = items.filter(function (item) { return item.is_pinned }).length
 
   function renderItem(item: LibraryItem) {
     const typeInfo = getTypeInfo(item.item_type)
@@ -447,8 +420,8 @@ export default function LawyerLibraryPage() {
         <div className="flex justify-between items-start gap-3 mb-2">
           <div className="flex flex-wrap items-center gap-2">
             <span style={{ backgroundColor: typeInfo.color }} className="px-2 py-0.5 rounded-full text-xs text-white font-['Tajawal']">{typeInfo.icon} {typeInfo.label}</span>
-            {item.specialty_id && (
-              <span className="px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">{getSpecialtyName(item.specialty_id)}</span>
+            {item.case_id && getCaseLabel(item.case_id) && (
+              <span className="px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">⚖️ {getCaseLabel(item.case_id)}</span>
             )}
             {item.file_url && <span className="text-xs text-[#4A473F] font-['Tajawal']">📎 ملف</span>}
           </div>
@@ -465,7 +438,7 @@ export default function LawyerLibraryPage() {
             {itemTags.map(function (tag) {
               function tagClick(e: React.MouseEvent) {
                 e.stopPropagation()
-                setTagFilter(tag)
+                setSearch(tag)
               }
               return (
                 <button key={tag} onClick={tagClick} className="cursor-pointer px-2 py-0.5 bg-white border border-[#D8D2C4] text-[#4A473F] hover:border-[#AD8A4E] text-xs font-['Tajawal'] rounded-full transition">#{tag}</button>
@@ -520,8 +493,8 @@ export default function LawyerLibraryPage() {
           <div className="flex justify-between items-start mb-3">
             <div className="flex flex-wrap items-center gap-2">
               <span style={{ backgroundColor: typeInfo.color }} className="px-2 py-0.5 rounded-full text-xs text-white font-['Tajawal']">{typeInfo.icon} {typeInfo.label}</span>
-              {item.specialty_id && (
-                <span className="px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">{getSpecialtyName(item.specialty_id)}</span>
+              {item.case_id && getCaseLabel(item.case_id) && (
+                <span className="px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">⚖️ {getCaseLabel(item.case_id)}</span>
               )}
             </div>
             <button onClick={closeModal} className="cursor-pointer text-[#4A473F] text-2xl leading-none">×</button>
@@ -549,7 +522,7 @@ export default function LawyerLibraryPage() {
 
           {item.link && (
             <a href={item.link} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-2">
-              {item.item_type === 'law' ? 'فتح المصدر الرسمي' : 'فتح الرابط'}
+              فتح الرابط
             </a>
           )}
 
@@ -562,7 +535,7 @@ export default function LawyerLibraryPage() {
 
           <div className="grid grid-cols-2 gap-2">
             <button onClick={editClick} className="cursor-pointer py-2 bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-sm">✏️ تعديل</button>
-            <button onClick={pinClick} className="cursor-pointer py-2 bg-[#F3EEE4] text-[#4A473F] rounded-md font-['Tajawal'] text-sm">{item.is_pinned ? '⭐ إلغاء التثبيت' : '☆ تثبيت'}</button>
+            <button onClick={pinClick} className="cursor-pointer py-2 bg-[#F3EEE4] text-[#4A473F] rounded-md font-['Tajawal'] text-sm">{item.is_pinned ? '⭐ إزالة من المفضلة' : '☆ إضافة إلى المفضلة'}</button>
             <button onClick={copyClick} className="cursor-pointer py-2 bg-[#F3EEE4] text-[#4A473F] rounded-md font-['Tajawal'] text-sm">
               {copiedId === item.id ? '✓ تم النسخ' : '📋 نسخ النص'}
             </button>
@@ -597,7 +570,7 @@ export default function LawyerLibraryPage() {
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى المكتبة</h1>
+            <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى المكتبة</h1>
             <a href="/subscription" className="inline-block mt-4 px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">عرض خطط الاشتراك</a>
           </div>
         </div>
@@ -650,26 +623,26 @@ export default function LawyerLibraryPage() {
             </div>
           </div>
           <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">مكتبتي القانونية ({items.length})</h1>
-          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">احفظ القوانين والملاحظات والملفات المهمة، ولخّصها بالذكاء الاصطناعي</p>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">احفظ القوانين والقرارات التي تعتمد عليها، واربطها بقضاياك، ولخّصها بالذكاء الاصطناعي</p>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-10 flex-1 w-full">
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-4 mb-6 flex items-center justify-between gap-4">
           <div>
-            <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">📜 المصدر الرسمي للتشريعات الأردنية</p>
-            <p className="font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed">ديوان التشريع والرأي. احفظ هنا القوانين التي تعتمد عليها مع رابط النص الرسمي، وراجع المصدر دائماً للتأكد من آخر تعديل.</p>
+            <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">⚖️ قرارك</p>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed">منصة نقابة المحامين الأردنيين للقرارات والتشريعات. سجّل الدخول برقمك النقابي، ثم احفظ هنا ما تعتمد عليه مع رابطه.</p>
           </div>
-          <a href="https://www.lob.gov.jo" target="_blank" rel="noopener noreferrer" className="flex-shrink-0 px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-xs">فتح الموقع</a>
+          <a href="https://www.qarark.com" target="_blank" rel="noopener noreferrer" className="flex-shrink-0 px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-xs">فتح قرارك</a>
         </div>
 
         <button onClick={toggleForm} className="px-5 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm mb-6">
-          {showForm ? 'إلغاء' : '+ عنصر جديد'}
+          {showForm ? 'إلغاء' : '+ إضافة بند/قرار'}
         </button>
 
         {showForm && (
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-6">
-            <h2 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-3">{editingId ? 'تعديل العنصر' : 'إضافة عنصر جديد'}</h2>
+            <h2 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-3">{editingId ? 'تعديل البند/القرار' : 'إضافة بند/قرار'}</h2>
 
             <div className="flex flex-wrap gap-2 mb-4">
               {typeOptions.map(function (t) {
@@ -691,16 +664,16 @@ export default function LawyerLibraryPage() {
             <div className="space-y-3">
               <input type="text" value={title} onChange={function (e) { setTitle(e.target.value) }} placeholder="العنوان" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
-              {itemType === 'law' && (
-                <input type="text" value={lawReference} onChange={function (e) { setLawReference(e.target.value) }} placeholder="اسم القانون ورقمه، مثال: قانون العمل رقم 8 لسنة 1996" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <input type="text" value={lawReference} onChange={function (e) { setLawReference(e.target.value) }} placeholder={itemType === 'law' ? 'اسم القانون ورقمه، مثال: قانون العمل رقم 8 لسنة 1996' : 'رقم القرار والمحكمة، مثال: تمييز حقوق رقم 1234/2023'} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+
+              {accountType === 'lawyer' && (
+                <select value={caseId} onChange={function (e) { setCaseId(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                  <option value="">ربط بقضية (اختياري)</option>
+                  {cases.map(function (c) { return <option key={c.id} value={c.id}>قضية {c.case_number} — {c.client_name}</option> })}
+                </select>
               )}
 
-              <select value={specialtyId} onChange={function (e) { setSpecialtyId(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-                <option value="">اختر الاختصاص (اختياري)</option>
-                {specialties.map(function (s) { return <option key={s.id} value={s.id}>{s.name_ar}</option> })}
-              </select>
-
-              <textarea value={content} onChange={function (e) { setContent(e.target.value) }} rows={5} placeholder="ملاحظات أو نص القانون" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <textarea value={content} onChange={function (e) { setContent(e.target.value) }} rows={5} placeholder="نص البند أو القرار، أو ملاحظاتك عليه" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
               <button type="button" onClick={handleSummarize} disabled={summarizing || !content.trim()} className="w-full py-2 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-sm disabled:opacity-50">
                 {summarizing ? 'جاري التلخيص...' : '✨ تلخيص بالذكاء الاصطناعي'}
@@ -713,7 +686,7 @@ export default function LawyerLibraryPage() {
                 </div>
               )}
 
-              <input type="text" value={link} onChange={function (e) { setLink(e.target.value) }} placeholder={itemType === 'law' ? 'رابط النص الرسمي (من ديوان التشريع والرأي)' : 'رابط (اختياري)'} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <input type="text" value={link} onChange={function (e) { setLink(e.target.value) }} placeholder="رابط (اختياري)، مثلاً من قرارك" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
               <input type="text" value={tagsInput} onChange={function (e) { setTagsInput(e.target.value) }} placeholder="وسوم للبحث السريع، افصل بينها بفاصلة (مثال: عمال، فصل تعسفي)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
@@ -736,35 +709,25 @@ export default function LawyerLibraryPage() {
           </div>
         )}
 
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+        <div className="flex gap-2 mb-4">
           <button
-            onClick={function () { setTypeFilter('') }}
-            className={"flex-shrink-0 px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (typeFilter === '' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F]')}
+            onClick={function () { setFavoritesOnly(false) }}
+            className={"px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (!favoritesOnly ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F]')}
           >
             الكل ({items.length})
           </button>
-          {typeOptions.map(function (t) {
-            const isActive = typeFilter === t.key
-            return (
-              <button
-                key={t.key}
-                onClick={function () { setTypeFilter(isActive ? '' : t.key) }}
-                className={"flex-shrink-0 px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (isActive ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F]')}
-              >
-                {t.icon} {t.label} ({typeCounts[t.key] || 0})
-              </button>
-            )
-          })}
+          <button
+            onClick={function () { setFavoritesOnly(true) }}
+            className={"px-4 py-2 rounded-full font-['Tajawal'] text-xs transition " + (favoritesOnly ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#4A473F]')}
+          >
+            ⭐ المفضلة ({favoritesCount})
+          </button>
         </div>
 
         <input type="text" value={search} onChange={function (e) { setSearch(e.target.value) }} placeholder="ابحث في العنوان والنص والملخص والوسوم..." className="w-full px-3 py-2 mb-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
         <div className="flex gap-2 items-center mb-4">
-          <select value={specialtyFilter} onChange={function (e) { setSpecialtyFilter(e.target.value) }} className="flex-1 px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-            <option value="">كل الاختصاصات</option>
-            {specialties.map(function (s) { return <option key={s.id} value={s.id}>{s.name_ar}</option> })}
-          </select>
-          <select value={sortBy} onChange={function (e) { setSortBy(e.target.value) }} className="px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+          <select value={sortBy} onChange={function (e) { setSortBy(e.target.value) }} className="flex-1 px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
             <option value="updated">آخر تحديث</option>
             <option value="created">الأحدث إضافة</option>
             <option value="title">أبجدياً</option>
@@ -775,35 +738,17 @@ export default function LawyerLibraryPage() {
           </div>
         </div>
 
-        {topTags.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className="font-['Tajawal'] text-xs text-[#4A473F]">الوسوم:</span>
-            {topTags.map(function (entry) {
-              const isActive = tagFilter === entry[0]
-              return (
-                <button
-                  key={entry[0]}
-                  onClick={function () { setTagFilter(isActive ? '' : entry[0]) }}
-                  className={"px-2 py-1 rounded-full text-xs font-['Tajawal'] transition " + (isActive ? 'bg-[#AD8A4E] text-white' : 'bg-white border border-[#D8D2C4] text-[#4A473F] hover:border-[#AD8A4E]')}
-                >
-                  #{entry[0]} ({entry[1]})
-                </button>
-              )
-            })}
-          </div>
-        )}
-
         <div className="flex items-center justify-between mb-4">
           <p className="font-['Tajawal'] text-xs text-[#4A473F]">عرض {filteredItems.length} من {items.length}</p>
-          {hasActiveFilters && (
-            <button onClick={clearFilters} className="cursor-pointer font-['Tajawal'] text-xs text-[#AD8A4E] underline">مسح الفلاتر</button>
+          {lowerSearch && (
+            <button onClick={function () { setSearch('') }} className="cursor-pointer font-['Tajawal'] text-xs text-[#AD8A4E] underline">مسح البحث</button>
           )}
         </div>
 
         {items.length === 0 && (
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-8 text-center">
             <p className="font-['Tajawal'] text-[#1B1A17] font-bold mb-1">مكتبتك فارغة</p>
-            <p className="font-['Tajawal'] text-sm text-[#4A473F]">ابدأ بإضافة أول قانون أو ملاحظة تحتاج الرجوع إليها.</p>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F]">ابدأ بإضافة أول قانون أو قرار تحتاج الرجوع إليه.</p>
           </div>
         )}
 

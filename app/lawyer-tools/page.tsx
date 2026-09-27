@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type Tool = { href: string; label: string; desc: string; icon: string; firms: boolean }
@@ -144,8 +145,7 @@ export default function LawyerToolsPage() {
       const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
       setTotalUnread(countConversations(unreadResult.data || []))
 
-      const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-      setPendingConsultations(pendingResult.count || 0)
+      setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
       setLoading(false)
       return
@@ -165,14 +165,7 @@ export default function LawyerToolsPage() {
     const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmResult.data.id).eq('is_read', false)
     setTotalUnread(countConversations(firmUnreadResult.data || []))
 
-    const rosterResult = await supabase.from('lawyers').select('id').eq('firm_id', firmResult.data.id)
-    const rosterIds = (rosterResult.data || []).map(function (l) { return l.id })
-    let pendingFilter = 'firm_id.eq.' + firmResult.data.id
-    if (rosterIds.length > 0) {
-      pendingFilter = pendingFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
-    }
-    const firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('status', 'pending').or(pendingFilter)
-    setPendingConsultations(firmPendingResult.count || 0)
+    setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
 
     setLoading(false)
   }

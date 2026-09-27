@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
 type PersonalEvent = {
@@ -159,8 +160,7 @@ export default function LawyerCalendarPage() {
         const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
         setTotalUnread(countConversations(unreadResult.data || []))
 
-        const pendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('lawyer_id', lawyerResult.data.id).eq('status', 'pending')
-        setPendingConsultations(pendingResult.count || 0)
+        setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
         await loadAll('lawyer', lawyerResult.data.id, [], myFirmId, mySpecialtyId)
         setLoading(false)
@@ -197,12 +197,7 @@ export default function LawyerCalendarPage() {
       const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmRow.id).eq('is_read', false)
       setTotalUnread(countConversations(firmUnreadResult.data || []))
 
-      let pendingFilter = 'firm_id.eq.' + firmRow.id
-      if (rosterIds.length > 0) {
-        pendingFilter = pendingFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
-      }
-      const firmPendingResult = await supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('status', 'pending').or(pendingFilter)
-      setPendingConsultations(firmPendingResult.count || 0)
+      setPendingConsultations(await getFirmBadgeCount(supabase, firmRow.id))
 
       await loadAll('firm', firmRow.id, rosterIds, null, null)
       setLoading(false)
@@ -523,7 +518,7 @@ export default function LawyerCalendarPage() {
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center max-w-md">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-8">
-            <h1 className="font-['Amiri'] text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى الأجندة</h1>
+            <h1 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-3">يلزم الاشتراك للوصول إلى الأجندة</h1>
             <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed mb-6">
               يرجى الاشتراك في إحدى الباقات المتاحة أولاً.
             </p>
