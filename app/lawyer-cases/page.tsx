@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
+import { uploadOwnFile, openPrivateFile } from '../lib/files'
 
 type LegalCase = {
   id: number
@@ -425,18 +426,18 @@ export default function LawyerCasesPage() {
     if (!e.target.files || !e.target.files[0] || !selectedCase || !lawyerId) return
 
     const file = e.target.files[0]
-    const filePath = 'case-' + selectedCase.id + '-' + Date.now() + '-' + file.name
 
-    const uploadResult = await supabase.storage.from('case-files').upload(filePath, file)
-    if (uploadResult.error) return
-
-    const urlResult = supabase.storage.from('case-files').getPublicUrl(filePath)
+    const storedPath = await uploadOwnFile(supabase, 'case-files', file)
+    if (!storedPath) {
+      alert('تعذر رفع الملف، حاول مرة أخرى')
+      return
+    }
 
     await supabase.from('case_files').insert({
       lawyer_id: lawyerId,
       client_name: selectedCase.client_name,
       file_name: file.name,
-      file_url: urlResult.data.publicUrl,
+      file_url: storedPath,
       case_id: selectedCase.id,
       folder_id: folderId,
     })
@@ -481,20 +482,18 @@ export default function LawyerCasesPage() {
     setUploadingWakalah(true)
 
     const file = e.target.files[0]
-    const filePath = 'lawyer-case-' + selectedCase.id + '-' + Date.now() + '-' + file.name
 
-    const uploadResult = await supabase.storage.from('wakalah-files').upload(filePath, file)
-    if (uploadResult.error) {
+    const storedPath = await uploadOwnFile(supabase, 'wakalah-files', file)
+    if (!storedPath) {
       setUploadingWakalah(false)
+      alert('تعذر رفع الملف، حاول مرة أخرى')
       return
     }
-
-    const urlResult = supabase.storage.from('wakalah-files').getPublicUrl(filePath)
 
     await supabase.from('wakalah_documents').insert({
       lawyer_id: lawyerId,
       case_id: selectedCase.id,
-      lawyer_file_url: urlResult.data.publicUrl,
+      lawyer_file_url: storedPath,
       status: 'pending_customer',
     })
 
@@ -895,7 +894,7 @@ export default function LawyerCasesPage() {
               <div key={folder.id} className="bg-[#F3EEE4] rounded-md p-3 mb-3">
                 <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">📁 {folder.folder_name}</p>
                 {folderFiles.map(function (f) {
-                  return <a key={f.id} href={f.file_url} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-xs text-[#AD8A4E] underline mb-1">{f.file_name}</a>
+                  return <button type="button" key={f.id} onClick={function () { openPrivateFile(supabase, 'case-files', f.file_url) }} className="block font-['Tajawal'] text-xs text-[#AD8A4E] underline mb-1">{f.file_name}</button>
                 })}
                 <label className="cursor-pointer inline-block mt-2 px-3 py-1.5 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:bg-[#D8D2C4] transition">
                   📎 رفع ملف لهذا المجلد
@@ -908,7 +907,7 @@ export default function LawyerCasesPage() {
             <div>
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">ملفات بدون مجلد:</p>
               {caseFiles.filter(function (f) { return !f.folder_id }).map(function (f) {
-                return <a key={f.id} href={f.file_url} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-xs text-[#AD8A4E] underline mb-1">{f.file_name}</a>
+                return <button type="button" key={f.id} onClick={function () { openPrivateFile(supabase, 'case-files', f.file_url) }} className="block font-['Tajawal'] text-xs text-[#AD8A4E] underline mb-1">{f.file_name}</button>
               })}
             </div>
           )}
@@ -921,7 +920,7 @@ export default function LawyerCasesPage() {
             return (
               <div key={w.id} className="bg-[#F3EEE4] rounded-md p-3 mb-2">
                 <p className="font-['Tajawal'] text-xs text-[#4A473F]">الحالة: {w.status === 'completed' ? 'مكتملة' : 'بانتظار توقيع العميل'}</p>
-                {w.lawyer_file_url && <a href={w.lawyer_file_url} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-xs text-[#AD8A4E] underline block">عرض ملف الوكالة</a>}
+                {w.lawyer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', w.lawyer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#AD8A4E] underline block">عرض ملف الوكالة</button>}
               </div>
             )
           })}

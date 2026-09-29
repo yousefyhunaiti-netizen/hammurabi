@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getCaller } from '../../lib/serverAuth'
 
 export async function POST(request: NextRequest) {
+  // Only logged-in accounts, within their daily limit, can use the summarizer.
+  const caller = await getCaller(request)
+  if (!caller) {
+    return NextResponse.json({ summary: null, error: 'يرجى تسجيل الدخول أولاً' }, { status: 401 })
+  }
+
+  const quotaResult = await caller.supabase.rpc('use_ai_quota')
+  const quota = (quotaResult.data || {}) as { allowed?: boolean }
+  if (quotaResult.error || !quota.allowed) {
+    return NextResponse.json({ summary: null, error: 'لقد وصلت إلى الحد اليومي لاستخدام الذكاء الاصطناعي. يمكنك المتابعة غداً.' }, { status: 429 })
+  }
+
   const body = await request.json()
-  const text = body.text || ''
+  const text = String(body.text || '').slice(0, 20000)
+  if (!text.trim()) {
+    return NextResponse.json({ summary: null, error: 'لا يوجد نص للتلخيص' }, { status: 400 })
+  }
 
   const systemInstruction = 'أنت مساعد قانوني. لخّص النص القانوني التالي في نقاط قصيرة وواضحة بالعربية، مع إبراز أهم النقاط القانونية فقط. كن مختصراً جداً.'
 

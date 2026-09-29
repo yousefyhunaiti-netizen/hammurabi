@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
 import Footer from '../../components/Footer'
+import { safeLink } from '../../lib/safeLink'
 import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
 
 type Lawyer = {
@@ -165,8 +166,9 @@ export default function LawyerDetailPage() {
   useEffect(function () {
     async function loadBookedSlots() {
       if (!selectedDate) return
-      const result = await supabase.from('appointments').select('time_slot').eq('lawyer_id', lawyerId).eq('appointment_date', selectedDate)
-      setBookedSlots((result.data || []).map(function (a) { return a.time_slot }))
+      // Only the booked times come back, never who booked them.
+      const result = await supabase.rpc('get_booked_slots', { p_date: selectedDate, p_lawyer_id: lawyerId })
+      setBookedSlots((result.data || []).map(function (a: { time_slot: string }) { return a.time_slot }))
     }
     loadBookedSlots()
   }, [selectedDate])
@@ -222,7 +224,8 @@ export default function LawyerDetailPage() {
 
     let generatedLink = ''
     if (consultationType === 'video') {
-      generatedLink = 'https://meet.jit.si/hammurabi-' + lawyerId + '-' + Date.now()
+      // A long random room name nobody can guess (the database also enforces this).
+      generatedLink = 'https://meet.jit.si/hammurabi-' + crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
     }
 
     const insertResult = await supabase.from('appointments').insert({
@@ -238,7 +241,12 @@ export default function LawyerDetailPage() {
     setBookingLoading(false)
 
     if (insertResult.error) {
-      setBookingMessage('حدث خطأ أثناء الحجز، حاول مرة أخرى')
+      if (insertResult.error.message.indexOf('محجوز') !== -1) {
+        setBookingMessage('هذا الموعد محجوز مسبقاً، يرجى اختيار وقت آخر')
+        setBookedSlots(bookedSlots.concat([slot]))
+      } else {
+        setBookingMessage('حدث خطأ أثناء الحجز، حاول مرة أخرى')
+      }
       return
     }
 
@@ -375,8 +383,8 @@ export default function LawyerDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2 pt-4 border-t border-[#D8D2C4]">
               {lawyer.phone && <a href={phoneLink} className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">📞 {lawyer.phone}</a>}
-              {lawyer.google_maps_link && <a href={lawyer.google_maps_link} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">📍 الموقع على الخريطة</a>}
-              {lawyer.website_url && <a href={lawyer.website_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">🌐 الموقع الإلكتروني</a>}
+              {lawyer.google_maps_link && <a href={safeLink(lawyer.google_maps_link)} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">📍 الموقع على الخريطة</a>}
+              {lawyer.website_url && <a href={safeLink(lawyer.website_url)} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">🌐 الموقع الإلكتروني</a>}
             </div>
           </div>
 

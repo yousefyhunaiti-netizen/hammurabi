@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
+import { authHeaders } from '../lib/files'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 type Payment = {
@@ -419,12 +420,16 @@ export default function AdminDashboardPage() {
 
     const response = await fetch('/api/broadcast-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(supabase),
       body: JSON.stringify({ subject: broadcastSubject || 'إشعار من حمورابي', message: broadcastMessage, target: broadcastTarget }),
     })
 
     const data = await response.json()
-    setBroadcastResult('تم الإرسال إلى ' + data.sentCount + ' من أصل ' + data.totalRecipients)
+    if (!response.ok) {
+      setBroadcastResult('تم نشر الإعلان داخل المنصة، لكن تعذر إرسال البريد الإلكتروني')
+    } else {
+      setBroadcastResult('تم الإرسال إلى ' + data.sentCount + ' من أصل ' + data.totalRecipients)
+    }
     setSendingBroadcast(false)
     setBroadcastMessage('')
     setBroadcastSubject('')

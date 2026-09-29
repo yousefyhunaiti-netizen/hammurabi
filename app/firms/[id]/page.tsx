@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
 import Footer from '../../components/Footer'
+import { safeLink } from '../../lib/safeLink'
 import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
 
 type Firm = {
@@ -243,23 +244,15 @@ export default function FirmDetailPage() {
       }
 
       if (firm && firm.show_lawyer_names && selectedLawyerId) {
-        const result = await supabase
-          .from('appointments')
-          .select('time_slot')
-          .eq('lawyer_id', Number(selectedLawyerId))
-          .eq('appointment_date', selectedDate)
-        setBookedSlots((result.data || []).map(function (a) { return a.time_slot }))
+        // Only the booked times come back, never who booked them.
+        const result = await supabase.rpc('get_booked_slots', { p_date: selectedDate, p_lawyer_id: Number(selectedLawyerId) })
+        setBookedSlots((result.data || []).map(function (a: { time_slot: string }) { return a.time_slot }))
         return
       }
 
       if (firm && !firm.show_lawyer_names && selectedSpecialtyId) {
-        const result = await supabase
-          .from('appointments')
-          .select('time_slot')
-          .eq('firm_id', firmId)
-          .eq('specialty_id', Number(selectedSpecialtyId))
-          .eq('appointment_date', selectedDate)
-        setBookedSlots((result.data || []).map(function (a) { return a.time_slot }))
+        const result = await supabase.rpc('get_booked_slots', { p_date: selectedDate, p_firm_id: firmId, p_specialty_id: Number(selectedSpecialtyId) })
+        setBookedSlots((result.data || []).map(function (a: { time_slot: string }) { return a.time_slot }))
       }
     }
 
@@ -302,8 +295,8 @@ export default function FirmDetailPage() {
 
     let generatedLink = ''
     if (consultationType === 'video') {
-      const roomName = 'hammurabi-firm-' + firmId + '-' + Date.now()
-      generatedLink = 'https://meet.jit.si/' + roomName
+      // A long random room name nobody can guess (the database also enforces this).
+      generatedLink = 'https://meet.jit.si/hammurabi-' + crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
     }
 
     const insertData: any = {
@@ -330,7 +323,12 @@ export default function FirmDetailPage() {
     setBookingLoading(false)
 
     if (insertResult.error) {
-      setBookingMessage('حدث خطأ أثناء الحجز، حاول مرة أخرى')
+      if (insertResult.error.message.indexOf('محجوز') !== -1) {
+        setBookingMessage('هذا الموعد محجوز مسبقاً، يرجى اختيار وقت آخر')
+        setBookedSlots(bookedSlots.concat([slot]))
+      } else {
+        setBookingMessage('حدث خطأ أثناء الحجز، حاول مرة أخرى')
+      }
       return
     }
 
@@ -532,12 +530,12 @@ export default function FirmDetailPage() {
                 </a>
               )}
               {firm.google_maps_link && (
-                <a href={firm.google_maps_link} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">
+                <a href={safeLink(firm.google_maps_link)} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">
                   📍 الموقع على الخريطة
                 </a>
               )}
               {firm.website_url && (
-                <a href={firm.website_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">
+                <a href={safeLink(firm.website_url)} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-[#F3EEE4] text-[#1B1A17] rounded-md font-['Tajawal'] text-sm hover:bg-[#D8D2C4] transition">
                   🌐 الموقع الإلكتروني
                 </a>
               )}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { uploadOwnFile, openPrivateFile } from '../lib/files'
 import { getLawyerBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
@@ -212,12 +213,13 @@ export default function WakalahPage() {
 
     let uploadedFileUrl = ''
     if (formFile) {
-      const filePath = 'wakalah-' + lawyerId + '-' + Date.now() + '-' + formFile.name
-      const uploadResult = await supabase.storage.from('wakalah-files').upload(filePath, formFile)
-      if (!uploadResult.error) {
-        const urlResult = supabase.storage.from('wakalah-files').getPublicUrl(filePath)
-        uploadedFileUrl = urlResult.data.publicUrl
+      const storedPath = await uploadOwnFile(supabase, 'wakalah-files', formFile)
+      if (!storedPath) {
+        setSaving(false)
+        setFormError('تعذر رفع الملف، حاول مرة أخرى')
+        return
       }
+      uploadedFileUrl = storedPath
     }
 
     const insertResult = await supabase.from('wakalah_documents').insert({
@@ -346,8 +348,8 @@ export default function WakalahPage() {
         )}
 
         <div className="flex gap-2 items-center flex-wrap">
-          {d.lawyer_file_url && <a href={d.lawyer_file_url} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-xs text-[#AD8A4E] underline">عرض ملف الوكالة</a>}
-          {d.customer_file_url && <a href={d.customer_file_url} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-xs text-[#2F4538] underline">النسخة الموقّعة من العميل</a>}
+          {d.lawyer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', d.lawyer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#AD8A4E] underline">عرض ملف الوكالة</button>}
+          {d.customer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', d.customer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#2F4538] underline">النسخة الموقّعة من العميل</button>}
           {!isRevoked && (
             <button onClick={revokeClick} className="font-['Tajawal'] text-xs text-[#7A2E2E] mr-auto">إلغاء الوكالة</button>
           )}

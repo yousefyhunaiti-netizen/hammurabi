@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { authHeaders } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import ReactMarkdown from 'react-markdown'
 import Footer from '../components/Footer'
@@ -134,7 +135,7 @@ export default function AiAssistantPage() {
 
     const response = await fetch('/api/chatbot', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(supabase),
       body: JSON.stringify({ message: input, history: historyForApi, accountType: getAccountTypeForApi() }),
     })
 

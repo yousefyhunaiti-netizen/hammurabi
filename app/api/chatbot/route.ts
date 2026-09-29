@@ -1,10 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getCaller } from '../../lib/serverAuth'
+
+function plainMessage(text: string, status: number) {
+  return new NextResponse(text, {
+    status: status,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  })
+}
 
 export async function POST(request: NextRequest) {
+  // Only logged-in accounts, within their daily limit, can use the assistant.
+  const caller = await getCaller(request)
+  if (!caller) {
+    return plainMessage('يرجى تسجيل الدخول لاستخدام المساعد الذكي.', 401)
+  }
+
+  const quotaResult = await caller.supabase.rpc('use_ai_quota')
+  if (quotaResult.error) {
+    return plainMessage('عذراً، حدث خطأ أثناء الاتصال بالمساعد الذكي. حاول مرة أخرى.', 500)
+  }
+  const quota = (quotaResult.data || {}) as { allowed?: boolean; account_type?: string }
+  if (!quota.allowed) {
+    return plainMessage('لقد وصلت إلى الحد اليومي لاستخدام المساعد الذكي. يمكنك المتابعة غداً.', 429)
+  }
+
   const body = await request.json()
-  const userMessage = body.message
-  const history = body.history || []
-  const accountType = body.accountType || 'customer'
+  const userMessage = String(body.message || '').slice(0, 2000)
+  if (!userMessage.trim()) {
+    return plainMessage('يرجى كتابة سؤالك.', 400)
+  }
+
+  // Keep only the recent, well-formed part of the conversation.
+  const rawHistory: unknown[] = Array.isArray(body.history) ? body.history.slice(-20) : []
+  const history = rawHistory
+    .filter(function (h): h is { role: string; text: string } {
+      const item = h as { role?: unknown; text?: unknown }
+      return !!item && (item.role === 'user' || item.role === 'model') && typeof item.text === 'string'
+    })
+    .map(function (h) {
+      return { role: h.role, text: h.text.slice(0, 4000) }
+    })
+
+  // The account type comes from the database, not from the page.
+  const accountType = quota.account_type || 'customer'
 
   let systemInstruction = ''
 

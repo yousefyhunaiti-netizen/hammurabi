@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '../lib/supabase'
+import { uploadOwnFile } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
@@ -268,12 +269,11 @@ export default function CommunityPage() {
 
     let imageUrl = ''
     if (composeImageFile) {
-      const filePath = 'post-' + myIdentity.type + '-' + myIdentity.id + '-' + Date.now() + '-' + composeImageFile.name
-      const uploadResult = await supabase.storage.from('post-images').upload(filePath, composeImageFile)
+      const filePath = await uploadOwnFile(supabase, 'post-images', composeImageFile)
 
-      if (uploadResult.error) {
+      if (!filePath) {
         setPosting(false)
-        setActionMessage('حدث خطأ أثناء رفع الصورة: ' + uploadResult.error.message)
+        setActionMessage('حدث خطأ أثناء رفع الصورة. الصور المقبولة: JPG أو PNG أو WEBP أو GIF بحجم أقصى 5 ميغابايت')
         return
       }
 

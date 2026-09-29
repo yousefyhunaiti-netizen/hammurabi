@@ -92,43 +92,16 @@ function CheckoutContent() {
     await new Promise(function (resolve) { setTimeout(resolve, 1200) })
 
     if (type === 'subscription') {
-      const today = new Date()
-      let nextBillingDate = new Date(today)
+      // PLACEHOLDER until PayTabs / Arab Bank: the database activates the
+      // logged-in account's own plan and sets the price itself, so the
+      // browser can't choose a price or activate someone else's account.
+      const activateResult = await supabase.rpc('checkout_activate_subscription', { p_tier: tier })
 
-      if (tier === 'monthly') {
-        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1)
-      } else if (tier === 'yearly') {
-        nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1)
-      } else {
-        nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 5)
+      if (activateResult.error) {
+        setProcessing(false)
+        setError('تعذر تفعيل الاشتراك، حاول مرة أخرى')
+        return
       }
-
-      const startedAtStr = today.toISOString().split('T')[0]
-      const nextBillingStr = nextBillingDate.toISOString().split('T')[0]
-
-      await supabase.from('subscriptions').insert({
-        account_type: accountType,
-        account_id: accountId,
-        tier: tier,
-        status: 'active',
-        started_at: startedAtStr,
-        next_billing_date: nextBillingStr,
-        price: amount,
-      })
-
-      await supabase.from('payments').insert({
-        payment_type: 'subscription',
-        amount: amount,
-        related_id: accountId,
-        status: 'completed',
-      })
-
-      const tableName = accountType === 'lawyer' ? 'lawyers' : 'firms'
-
-      await supabase
-        .from(tableName)
-        .update({ subscription_tier: tier, is_active: true })
-        .eq('id', accountId)
     }
 
     if (type === 'featured') {

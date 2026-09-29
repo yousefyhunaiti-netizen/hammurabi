@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getCaller, escapeHtml } from '../../lib/serverAuth'
 
 export async function POST(request: NextRequest) {
-  const body = await request.json()
-  const subject = body.subject || 'إشعار من حمورابي'
-  const message = body.message || ''
-  const target = body.target || 'all'
+  // Only a logged-in admin can email every lawyer and firm.
+  const caller = await getCaller(request)
+  if (!caller) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string
-  )
+  const adminResult = await caller.supabase.rpc('is_admin')
+  if (adminResult.data !== true) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+  }
+
+  const body = await request.json()
+  const subject = String(body.subject || 'إشعار من حمورابي').slice(0, 200)
+  const message = String(body.message || '').slice(0, 10000)
+  const target = body.target === 'lawyers' || body.target === 'firms' ? body.target : 'all'
+
+  const supabase = caller.supabase
 
   const emails: string[] = []
 
@@ -41,7 +49,7 @@ export async function POST(request: NextRequest) {
         from: 'حمورابي <onboarding@resend.dev>',
         to: emails[i],
         subject: subject,
-        html: '<div dir="rtl" style="font-family: Tajawal, sans-serif; text-align: right;">' + message.replace(/\n/g, '<br>') + '</div>',
+        html: '<div dir="rtl" style="font-family: Tajawal, sans-serif; text-align: right;">' + escapeHtml(message).replace(/\n/g, '<br>') + '</div>',
       }),
     })
 

@@ -218,11 +218,11 @@ export default function FirmDashboardPage() {
   async function handleInvite(lawyer: SearchResult) {
     if (!firm) return
 
-    const updateResult = await supabase.from('lawyers').update({ pending_firm_id: firm.id }).eq('id', lawyer.id)
+    const inviteResult = await supabase.rpc('invite_lawyer_to_firm', { p_lawyer_id: lawyer.id })
 
-    if (updateResult.error) {
+    if (inviteResult.error || inviteResult.data !== true) {
       setInviteMessage(function (prev) {
-        return Object.assign({}, prev, { [lawyer.id]: 'خطأ: ' + updateResult.error.message })
+        return Object.assign({}, prev, { [lawyer.id]: 'تعذر إرسال الدعوة، حاول مرة أخرى' })
       })
       return
     }

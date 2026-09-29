@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { authHeaders, uploadOwnFile, openPrivateFile } from '../lib/files'
+import { safeLink } from '../lib/safeLink'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 
@@ -248,12 +250,12 @@ export default function LawyerLibraryPage() {
     try {
       const response = await fetch('/api/summarize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(supabase),
         body: JSON.stringify({ text: content }),
       })
       const data = await response.json()
       if (!response.ok || !data.summary) {
-        setFormError('تعذر تلخيص النص، حاول مرة أخرى')
+        setFormError(data.error || 'تعذر تلخيص النص، حاول مرة أخرى')
       } else {
         setDraftSummary(data.summary)
       }
@@ -276,16 +278,13 @@ export default function LawyerLibraryPage() {
 
     let uploadedFileUrl = ''
     if (file) {
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const filePath = 'lib-' + accountType + '-' + accountId + '-' + Date.now() + '-' + safeName
-      const uploadResult = await supabase.storage.from('library-files').upload(filePath, file)
-      if (uploadResult.error) {
+      const storedPath = await uploadOwnFile(supabase, 'library-files', file)
+      if (!storedPath) {
         setFormError('تعذر رفع الملف، حاول مرة أخرى')
         setSaving(false)
         return
       }
-      const urlResult = supabase.storage.from('library-files').getPublicUrl(filePath)
-      uploadedFileUrl = urlResult.data.publicUrl
+      uploadedFileUrl = storedPath
     }
 
     const payload: any = {
@@ -521,13 +520,13 @@ export default function LawyerLibraryPage() {
           )}
 
           {item.link && (
-            <a href={item.link} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-2">
+            <a href={safeLink(item.link)} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-2">
               فتح الرابط
             </a>
           )}
 
           {item.file_url && (
-            <a href={item.file_url} target="_blank" rel="noopener noreferrer" className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-3">عرض الملف المرفق</a>
+            <button type="button" onClick={function () { openPrivateFile(supabase, 'library-files', item.file_url as string) }} className="block font-['Tajawal'] text-sm text-[#AD8A4E] underline mb-3">عرض الملف المرفق</button>
           )}
 
           <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">أضيف في: {formatDate(item.created_at)}</p>
