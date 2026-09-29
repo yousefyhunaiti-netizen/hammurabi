@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 
 type Note = {
@@ -58,6 +59,7 @@ export default function LawyerNotesPage() {
   const [saving, setSaving] = useState(false)
 
   const supabase = createClient()
+  const router = useRouter()
 
   async function loadNotes(id: number) {
     const result = await supabase.from('lawyer_notes').select('*').eq('lawyer_id', id).order('created_at', { ascending: false })
@@ -106,6 +108,7 @@ export default function LawyerNotesPage() {
   async function handleLogout() {
     await supabase.auth.signOut()
     setMenuOpen(false)
+    router.push('/')
   }
 
   function toggleMenu() {

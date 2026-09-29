@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { uploadOwnFile, openPrivateFile } from '../lib/files'
 
@@ -147,6 +148,7 @@ export default function LawyerCasesPage() {
   const [uploadingWakalah, setUploadingWakalah] = useState(false)
 
   const supabase = createClient()
+  const router = useRouter()
 
   async function loadCases(id: number) {
     const casesResult = await supabase.from('legal_cases').select('*').eq('lawyer_id', id).order('id', { ascending: false })
@@ -200,6 +202,7 @@ export default function LawyerCasesPage() {
   async function handleLogout() {
     await supabase.auth.signOut()
     setMenuOpen(false)
+    router.push('/')
   }
 
   function toggleMenu() {

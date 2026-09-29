@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 
 type Posting = {
@@ -48,6 +49,7 @@ export default function TraineeBoardPage() {
   const [saving, setSaving] = useState(false)
 
   const supabase = createClient()
+  const router = useRouter()
 
   async function loadPostings() {
     const result = await supabase.from('trainee_postings').select('*').order('created_at', { ascending: false })
@@ -98,6 +100,7 @@ export default function TraineeBoardPage() {
     await supabase.auth.signOut()
     setLoggedIn(false)
     setMenuOpen(false)
+    router.push('/')
   }
 
   function toggleMenu() {

@@ -85,6 +85,7 @@ export default function AiAssistantPage() {
     await supabase.auth.signOut()
     setLoggedIn(false)
     setMenuOpen(false)
+    router.push('/')
   }
 
   function toggleMenu() {

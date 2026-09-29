@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { uploadOwnFile } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
@@ -93,6 +94,7 @@ export default function CommunityPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+  const router = useRouter()
 
   async function loadFeed() {
     const questionsResult = await supabase.from('community_questions').select('id, lawyer_id, title, body, created_at').order('created_at', { ascending: false })
@@ -214,6 +216,7 @@ export default function CommunityPage() {
   async function handleLogout() {
     await supabase.auth.signOut()
     setMenuOpen(false)
+    router.push('/')
   }
 
   function toggleMenu() {
