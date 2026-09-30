@@ -17,7 +17,7 @@ export default async function sitemap() {
     { url: baseUrl + '/login', lastModified: new Date() },
   ]
 
-  const lawyersResult = await supabase.from('lawyers').select('id').eq('is_approved', true).eq('is_active', true)
+  const lawyersResult = await supabase.from('lawyers').select('id').eq('is_approved', true).eq('is_active', true).eq('is_trainee', false)
   const lawyerPages = (lawyersResult.data || []).map(function (l) {
     return { url: baseUrl + '/lawyers/' + l.id, lastModified: new Date() }
   })

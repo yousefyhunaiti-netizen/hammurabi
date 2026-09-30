@@ -46,7 +46,7 @@ export default function HomePage() {
 
       setCheckingAuth(false)
 
-      const lawyersCountResult = await supabase.from('lawyers').select('id, city', { count: 'exact' }).eq('is_approved', true).eq('is_active', true)
+      const lawyersCountResult = await supabase.from('lawyers').select('id, city', { count: 'exact' }).eq('is_approved', true).eq('is_active', true).eq('is_trainee', false)
       const specialtiesCountResult = await supabase.from('specialties').select('id', { count: 'exact', head: true })
 
       setLawyerCount(lawyersCountResult.count || 0)
@@ -226,9 +226,9 @@ export default function HomePage() {
       </div>
 
       <div className="bg-[#F3EEE4] border-y border-[#D8D2C4] py-10 text-center">
-        <a href="/trainee-board" className="inline-block font-['Tajawal'] text-[#1B1A17] hover:text-[#AD8A4E] transition">
-          <span className="font-bold text-lg">هل أنت متدرب تبحث عن محامي؟</span>
-          <span className="block text-sm text-[#4A473F] mt-1">تصفّح لوحة فرص التدريب المتاحة الآن ←</span>
+        <a href="/signup?type=lawyer&trainee=1" className="inline-block font-['Tajawal'] text-[#1B1A17] hover:text-[#AD8A4E] transition">
+          <span className="font-bold text-lg">هل أنت محامي متدرب؟</span>
+          <span className="block text-sm text-[#4A473F] mt-1">أنشئ حسابك كمحامي متدرب وتصفّح فرص التدريب المتاحة ←</span>
         </a>
       </div>
 

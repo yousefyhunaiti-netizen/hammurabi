@@ -12,6 +12,19 @@ type AccountInfo = {
   is_comped: boolean | null
   is_active: boolean | null
   subscription_tier: string | null
+  firm_id?: number | null
+  subaccount_until?: string | null
+}
+
+function todayString() {
+  const now = new Date()
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+}
+
+function formatDateDisplay(dateStr: string) {
+  const parts = dateStr.split('T')[0].split('-')
+  if (parts.length !== 3) return dateStr
+  return parts[2] + '/' + parts[1] + '/' + parts[0]
 }
 
 const tierLabels: { [key: string]: string } = {
@@ -64,7 +77,7 @@ export default function SubscriptionPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier, firm_id, subaccount_until').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         setAccountType('lawyer')
@@ -116,17 +129,31 @@ export default function SubscriptionPage() {
     router.push('/checkout?type=subscription&tier=' + tier + '&amount=' + amount + '&accountType=' + accountType + '&accountId=' + account.id)
   }
 
+  function handleSelectSubaccount(tier: string, amount: number) {
+    if (!account) return
+    router.push('/checkout?type=subaccount&tier=' + tier + '&amount=' + amount + '&accountType=lawyer&accountId=' + account.id)
+  }
+
+  // Prices are also set in the database, which decides what is actually charged.
+  // Every lawyer subscribes separately, including lawyers who belong to a firm.
   const tiers = accountType === 'firm'
     ? [
-        { key: 'monthly', label: 'شهري', price: 50, per: 'شهرياً' },
-        { key: 'yearly', label: 'سنوي', price: 450, per: 'سنوياً', note: 'وفّر ما يعادل شهرين ونصف' },
-        { key: '5year', label: '5 سنوات', price: 750, per: 'لمرة واحدة', note: 'الأفضل قيمة على المدى الطويل' },
+        { key: 'monthly', label: 'شهري', price: 30, per: 'شهرياً' },
+        { key: 'yearly', label: 'سنوي', price: 270, per: 'سنوياً', note: 'وفّر ما يعادل 3 أشهر' },
+        { key: '5year', label: '5 سنوات', price: 450, per: 'لمرة واحدة', note: 'الأفضل قيمة على المدى الطويل' },
       ]
     : [
         { key: 'monthly', label: 'شهري', price: 20, per: 'شهرياً' },
-        { key: 'yearly', label: 'سنوي', price: 180, per: 'سنوياً', note: 'وفّر ما يعادل شهرين' },
+        { key: 'yearly', label: 'سنوي', price: 180, per: 'سنوياً', note: 'وفّر ما يعادل 3 أشهر' },
         { key: '5year', label: '5 سنوات', price: 300, per: 'لمرة واحدة', note: 'الأفضل قيمة على المدى الطويل' },
       ]
+
+  // A lawyer's private sub-account: half the lawyer price.
+  const subaccountTiers = [
+    { key: 'monthly', label: 'شهري', price: 10, per: 'شهرياً' },
+    { key: 'yearly', label: 'سنوي', price: 90, per: 'سنوياً' },
+    { key: '5year', label: '5 سنوات', price: 150, per: 'لمرة واحدة' },
+  ]
 
   const featureList = accountType === 'firm'
     ? ['إدارة كامل فريق المكتب', 'أدواتي والفواتير والمالية', 'المجتمع والمراسلة المباشرة', 'ظهور المكتب في دليل حمورابي']
@@ -233,6 +260,9 @@ export default function SubscriptionPage() {
       <div className="max-w-3xl mx-auto px-6 py-12 flex-1 w-full">
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 mb-8">
           <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-3">كل باقة تشمل:</p>
+          {accountType === 'firm' && (
+            <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-3">يشترك كل محامي في المكتب باشتراكه الخاص، واشتراك المكتب يغطي حساب المكتب وأدواته.</p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
             {featureList.map(function (feature) {
               return (
@@ -299,6 +329,33 @@ export default function SubscriptionPage() {
             )
           })}
         </div>
+
+        {accountType === 'lawyer' && account && (account.firm_id || (account.subaccount_until && account.subaccount_until >= todayString())) && (
+          <div id="private" className="bg-white border border-[#D8D2C4] rounded-2xl p-6 mt-10">
+            <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17] mb-1">🔒 الحساب الخاص</h2>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed mb-4">
+              مساحة عمل منفصلة لقضاياك وموكليك الخاصين: القضايا والوكالات والفواتير والمصاريف والأجندة في حسابك الخاص لا يراها المكتب. تنتقل بين عمل المكتب وحسابك الخاص بضغطة من صفحة «أدواتي». السعر نصف سعر اشتراك المحامي.
+            </p>
+            {account.subaccount_until && account.subaccount_until >= todayString() && (
+              <p className="font-['Tajawal'] text-sm text-[#2F4538] font-bold mb-4">حسابك الخاص فعّال حتى {formatDateDisplay(account.subaccount_until)}. أي تجديد يُضاف إلى المدة المتبقية.</p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {subaccountTiers.map(function (tier) {
+                return (
+                  <button
+                    key={tier.key}
+                    onClick={function () { handleSelectSubaccount(tier.key, tier.price) }}
+                    className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-lg p-4 text-center hover:border-[#AD8A4E] transition"
+                  >
+                    <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{tier.label}</p>
+                    <p className="font-['Tajawal'] text-2xl font-bold text-[#1B1A17]">{tier.price} <span className="text-sm font-normal text-[#4A473F]">د.أ</span></p>
+                    <p className="font-['Tajawal'] text-xs text-[#4A473F]">{tier.per}</p>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
       </div>
 

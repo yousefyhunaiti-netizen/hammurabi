@@ -1,12 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { uploadOwnFile, openPrivateFile } from '../lib/files'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
+import Footer from '../components/Footer'
+import WorkspaceSwitch from '../components/WorkspaceSwitch'
 
 type LegalCase = {
   id: number
+  lawyer_id: number
   case_number: string
   specialty_id: number | null
   client_name: string
@@ -75,6 +79,11 @@ type Specialty = {
   name_ar: string
 }
 
+type RosterLawyer = {
+  id: number
+  full_name: string
+}
+
 const courtInstances = ['محكمة البداية', 'محكمة الاستئناف', 'محكمة التمييز']
 const statusOptions = ['نشطة', 'مؤجلة', 'مكتسبة', 'خاسرة', 'مغلقة']
 
@@ -91,6 +100,14 @@ export default function LawyerCasesPage() {
   const [notAllowed, setNotAllowed] = useState(false)
   const [notSubscribed, setNotSubscribed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [totalUnread, setTotalUnread] = useState(0)
+  const [pendingConsultations, setPendingConsultations] = useState(0)
+
+  // Firms see their lawyers' shared cases, read-only, with a lawyer filter.
+  const [accountType, setAccountType] = useState<'lawyer' | 'firm'>('lawyer')
+  const [roster, setRoster] = useState<RosterLawyer[]>([])
+  const [lawyerFilter, setLawyerFilter] = useState('all')
+  const isFirm = accountType === 'firm'
 
   const [view, setView] = useState('list')
   const [cases, setCases] = useState<LegalCase[]>([])
@@ -149,12 +166,47 @@ export default function LawyerCasesPage() {
 
   const supabase = createClient()
   const router = useRouter()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function () {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return function () {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  function countConversations(rows: any[]) {
+    const senders = new Set(rows.map(function (m) {
+      return m.sender_lawyer_id ? 'lawyer-' + m.sender_lawyer_id : 'firm-' + m.sender_firm_id
+    }))
+    return senders.size
+  }
 
   async function loadCases(id: number) {
     const casesResult = await supabase.from('legal_cases').select('*').eq('lawyer_id', id).order('id', { ascending: false })
     setCases(casesResult.data || [])
+    await loadHearings(casesResult.data || [])
+  }
 
-    const caseIds = (casesResult.data || []).map(function (c) { return c.id })
+  // Firm view: the database returns only its lawyers' shared (non-private) cases.
+  async function loadFirmCases(rosterIds: number[]) {
+    if (rosterIds.length === 0) {
+      setCases([])
+      setHearingsAll([])
+      return
+    }
+    const casesResult = await supabase.from('legal_cases').select('*').in('lawyer_id', rosterIds).order('id', { ascending: false })
+    setCases(casesResult.data || [])
+    await loadHearings(casesResult.data || [])
+  }
+
+  async function loadHearings(caseRows: LegalCase[]) {
+    const caseIds = caseRows.map(function (c) { return c.id })
     if (caseIds.length > 0) {
       const hearingsResult = await supabase.from('case_hearings').select('*').in('case_id', caseIds)
       setHearingsAll(hearingsResult.data || [])
@@ -173,26 +225,59 @@ export default function LawyerCasesPage() {
         return
       }
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userResult.data.user.id).maybeSingle()
+      const userId = userResult.data.user.id
+      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
 
-      if (!lawyerResult.data) {
+      if (lawyerResult.data) {
+        if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
+          setNotSubscribed(true)
+          setLoading(false)
+          return
+        }
+
+        setAccountType('lawyer')
+        setLawyerId(lawyerResult.data.id)
+
+        const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
+        setTotalUnread(countConversations(unreadResult.data || []))
+        setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
+
+        const specialtiesResult = await supabase.from('specialties').select('*')
+        setSpecialties(specialtiesResult.data || [])
+
+        await loadCases(lawyerResult.data.id)
+        setLoading(false)
+        return
+      }
+
+      const firmResult = await supabase.from('firms').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+
+      if (!firmResult.data) {
         setNotAllowed(true)
         setLoading(false)
         return
       }
 
-      if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
+      if (!firmResult.data.is_active && !firmResult.data.is_comped) {
         setNotSubscribed(true)
         setLoading(false)
         return
       }
 
-      setLawyerId(lawyerResult.data.id)
+      setAccountType('firm')
+
+      const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmResult.data.id).eq('is_read', false)
+      setTotalUnread(countConversations(firmUnreadResult.data || []))
+      setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
 
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
 
-      await loadCases(lawyerResult.data.id)
+      const rosterResult = await supabase.from('lawyers').select('id, full_name').eq('firm_id', firmResult.data.id)
+      const rosterRows: RosterLawyer[] = rosterResult.data || []
+      setRoster(rosterRows)
+
+      await loadFirmCases(rosterRows.map(function (l) { return l.id }))
       setLoading(false)
     }
 
@@ -531,7 +616,13 @@ export default function LawyerCasesPage() {
 
   const kanbanColumns = courtInstances.concat(['مكتسبة', 'خاسرة'])
 
+  function getRosterName(id: number) {
+    const found = roster.find(function (l) { return l.id === id })
+    return found ? found.full_name : ''
+  }
+
   const visibleCases = cases.filter(function (c) {
+    if (isFirm && lawyerFilter !== 'all' && c.lawyer_id !== Number(lawyerFilter)) return false
     if (statusFilter === 'all') return true
     if (statusFilter === 'active') return c.status !== 'مغلقة' && c.status !== 'مكتسبة' && c.status !== 'خاسرة'
     if (statusFilter === 'closed') return c.status === 'مغلقة' || c.status === 'مكتسبة' || c.status === 'خاسرة'
@@ -539,7 +630,7 @@ export default function LawyerCasesPage() {
   })
 
   async function handleDropOnColumn(column: string) {
-    if (draggedCaseId === null) return
+    if (draggedCaseId === null || isFirm) return
 
     if (column === 'مكتسبة' || column === 'خاسرة') {
       await supabase.from('legal_cases').update({ status: column }).eq('id', draggedCaseId)
@@ -591,6 +682,7 @@ export default function LawyerCasesPage() {
           <p className="font-['Tajawal'] font-bold text-[#1B1A17]">رقم {c.case_number}</p>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">{c.status}</span>
+            {!isFirm && (
             <div className="relative">
               <button onClick={menuClick} className="cursor-pointer text-[#4A473F] px-1">⋮</button>
               {menuOpenHere && (
@@ -600,8 +692,10 @@ export default function LawyerCasesPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
+        {isFirm && <p className="font-['Tajawal'] text-xs text-[#1B1A17] font-bold mb-1">المحامي: {getRosterName(c.lawyer_id)}</p>}
         <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">الموكل: {c.client_name}</p>
         {c.opposing_party && <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">ضد: {c.opposing_party}</p>}
         <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-1">{getSpecialtyName(c.specialty_id)} — {c.court_instance}</p>
@@ -632,7 +726,7 @@ export default function LawyerCasesPage() {
               {colCases.length === 0 && (
                 <p className="font-['Tajawal'] text-xs text-[#4A473F] text-center">لا توجد قضايا</p>
               )}
-              {colCases.map(function (c) { return renderCaseCard(c, true) })}
+              {colCases.map(function (c) { return renderCaseCard(c, !isFirm) })}
             </div>
           )
         })}
@@ -655,7 +749,7 @@ export default function LawyerCasesPage() {
       <div key={h.id} className="bg-[#F3EEE4] rounded-md p-4 mb-3">
         <div className="flex justify-between items-start mb-2">
           <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{formatDateDisplay(h.hearing_date)} {h.hearing_time ? '- ' + h.hearing_time : ''}</p>
-          {!isEditing && (
+          {!isEditing && !isFirm && (
             <button onClick={editClick} className="font-['Tajawal'] text-xs text-[#AD8A4E]">تحديث النتيجة</button>
           )}
         </div>
@@ -692,6 +786,17 @@ export default function LawyerCasesPage() {
 
     function statusClick() {
       handleToggleInvoiceStatus(inv)
+    }
+
+    if (isFirm) {
+      return (
+        <div key={inv.id} className="flex items-center justify-between bg-[#F3EEE4] rounded-md p-3 mb-2">
+          <span className="font-['Tajawal'] text-sm text-[#1B1A17]">المبلغ: {inv.amount} د.أ</span>
+          <span className={"px-3 py-1.5 rounded-md font-['Tajawal'] text-xs " + (inv.status === 'paid' ? 'bg-[#2F4538] text-white' : 'bg-[#7A2E2E] text-white')}>
+            {inv.status === 'paid' ? 'مدفوعة' : 'غير مدفوعة'}
+          </span>
+        </div>
+      )
     }
 
     return (
@@ -787,7 +892,11 @@ export default function LawyerCasesPage() {
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <div className="flex justify-between items-start mb-4">
-            <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">قضية رقم {c.case_number}</h2>
+            <div>
+              <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">قضية رقم {c.case_number}</h2>
+              {isFirm && <p className="font-['Tajawal'] text-sm text-[#4A473F] mt-1">المحامي: {getRosterName(c.lawyer_id)} — {c.status}</p>}
+            </div>
+            {!isFirm && (
             <div className="flex items-center gap-2">
               <select value={c.status} onChange={statusChange} className="px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
                 {statusOptions.map(function (s) { return <option key={s} value={s}>{s}</option> })}
@@ -797,6 +906,7 @@ export default function LawyerCasesPage() {
               )}
               <button onClick={deleteThisCase} className="px-3 py-2 bg-[#7A2E2E] text-white rounded-md font-['Tajawal'] text-xs">حذف</button>
             </div>
+            )}
           </div>
 
           {editingCase ? (
@@ -839,22 +949,26 @@ export default function LawyerCasesPage() {
 
           {caseInvoices.map(renderInvoiceRow)}
 
+          {!isFirm && (
           <div className="flex gap-2 mt-3">
             <input type="number" value={newInvoiceAmount} onChange={invoiceAmountChange} placeholder="مبلغ فاتورة جديدة" className="flex-1 px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
             <input type="date" value={newInvoiceDueDate} onChange={function (e) { setNewInvoiceDueDate(e.target.value) }} className="px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
             <button onClick={handleAddInvoice} disabled={savingInvoice} className="px-4 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm">إضافة فاتورة</button>
           </div>
+          )}
         </div>
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">الجلسات</h3>
+            {!isFirm && (
             <button onClick={function () { setShowAddHearing(!showAddHearing) }} className="px-4 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-xs">
               {showAddHearing ? 'إلغاء' : '+ إضافة جلسة'}
             </button>
+            )}
           </div>
 
-          {showAddHearing && (
+          {showAddHearing && !isFirm && (
             <div className="bg-[#F3EEE4] rounded-md p-4 mb-4">
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <input type="date" value={hearingDate} onChange={function (e) { setHearingDate(e.target.value) }} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
@@ -873,6 +987,7 @@ export default function LawyerCasesPage() {
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">الملفات والمجلدات</h3>
 
+          {!isFirm && (
           <div className="mb-4">
             <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رفع ملف مباشرة للقضية</label>
             <label className="cursor-pointer inline-block px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:bg-[#D8D2C4] transition">
@@ -880,11 +995,14 @@ export default function LawyerCasesPage() {
               <input type="file" onChange={generalUploadChange} className="hidden" />
             </label>
           </div>
+          )}
 
+          {!isFirm && (
           <div className="flex gap-2 mb-4">
             <input type="text" value={newFolderName} onChange={folderNameChange} placeholder="اسم مجلد جديد (اختياري)" className="flex-1 px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
             <button onClick={handleAddFolder} className="px-4 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-xs">إنشاء مجلد</button>
           </div>
+          )}
 
           {caseFolders.map(function (folder) {
             const folderFiles = caseFiles.filter(function (f) { return f.folder_id === folder.id })
@@ -899,10 +1017,13 @@ export default function LawyerCasesPage() {
                 {folderFiles.map(function (f) {
                   return <button type="button" key={f.id} onClick={function () { openPrivateFile(supabase, 'case-files', f.file_url) }} className="block font-['Tajawal'] text-xs text-[#AD8A4E] underline mb-1">{f.file_name}</button>
                 })}
+                {!isFirm && (
                 <label className="cursor-pointer inline-block mt-2 px-3 py-1.5 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:bg-[#D8D2C4] transition">
                   📎 رفع ملف لهذا المجلد
                   <input type="file" onChange={folderUploadChange} className="hidden" />
-                </label>              </div>
+                </label>
+                )}
+              </div>
             )
           })}
 
@@ -928,6 +1049,11 @@ export default function LawyerCasesPage() {
             )
           })}
 
+          {caseWakalah.length === 0 && isFirm && (
+            <p className="font-['Tajawal'] text-sm text-[#4A473F]">لا توجد وكالة مرتبطة بهذه القضية</p>
+          )}
+
+          {!isFirm && (
           <div className="mb-3">
             <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رفع وكالة جديدة لهذه القضية</label>
             <label className="cursor-pointer inline-block px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:bg-[#D8D2C4] transition">
@@ -935,8 +1061,9 @@ export default function LawyerCasesPage() {
               <input type="file" onChange={handleUploadNewWakalah} disabled={uploadingWakalah} className="hidden" />
             </label>
           </div>
+          )}
 
-          {unlinkedWakalah.length > 0 && (
+          {!isFirm && unlinkedWakalah.length > 0 && (
             <div>
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">أو اربط وكالة سابقة بهذه القضية:</p>
               {unlinkedWakalah.map(function (w) {
@@ -968,7 +1095,7 @@ export default function LawyerCasesPage() {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center">
-          <p className="font-['Tajawal'] text-[#4A473F] mb-4">هذه الصفحة مخصصة لحسابات المحامين فقط</p>
+          <p className="font-['Tajawal'] text-[#4A473F] mb-4">هذه الصفحة مخصصة لحسابات المحامين والمكاتب فقط</p>
           <a href="/login" className="inline-block px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">تسجيل الدخول</a>
         </div>
       </div>
@@ -989,25 +1116,43 @@ export default function LawyerCasesPage() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen pattern-bg">
+    <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
       <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
             <div className="flex gap-5 items-center">
-              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
-              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
-              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
+              {isFirm && (
+                <a href="/firm-dashboard" className="hover:text-[#AD8A4E] transition">لوحة التحكم</a>
+              )}
               <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
-              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
-              <div className="relative">
-                <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+              <a href="/lawyer-messages" className="relative hover:text-[#AD8A4E] transition">
+                <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                </svg>
+                {totalUnread > 0 && (
+                  <span className="absolute -top-2 -left-2 bg-[#7A2E2E] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{totalUnread}</span>
+                )}
+              </a>
+              <div className="relative" ref={menuRef}>
+                <button onClick={toggleMenu} className="relative w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                   <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
+                  {pendingConsultations > 0 && (
+                    <span className="absolute -top-1 -left-1 bg-[#7A2E2E] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingConsultations}</span>
+                  )}
                 </button>
                 {menuOpen && (
                   <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
-                    <a href="/lawyer-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>
+                    <a href="/subscription" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">ترقية الاشتراك</a>
+                    <a href={isFirm ? '/firm-info' : '/lawyer-info'} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">معلوماتي الشخصية</a>
+                    <a href="/lawyer-history" className="relative block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">
+                      المواعيد والاستشارات
+                      {pendingConsultations > 0 && (
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 bg-[#7A2E2E] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingConsultations}</span>
+                      )}
+                    </a>
                     <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">تسجيل الخروج</button>
                   </div>
                 )}
@@ -1015,13 +1160,26 @@ export default function LawyerCasesPage() {
             </div>
           </div>
           <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">ملفات القضايا ({cases.length})</h1>
-          <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
+          {isFirm ? (
+            <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">قضايا محامي المكتب — للاطلاع فقط. القضايا الخاصة بحساب المحامي الخاص لا تظهر هنا.</p>
+          ) : (
+            <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
+      <div className="max-w-4xl mx-auto px-6 py-10 flex-1 w-full">
+        {!isFirm && <WorkspaceSwitch />}
+
         {!selectedCase && (
           <div>
+            {isFirm && (
+              <select value={lawyerFilter} onChange={function (e) { setLawyerFilter(e.target.value) }} className="w-full px-3 py-2 mb-4 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                <option value="all">جميع المحامين</option>
+                {roster.map(function (l) { return <option key={l.id} value={String(l.id)}>{l.full_name}</option> })}
+              </select>
+            )}
+
             <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
               <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 w-fit">
                 <button onClick={function () { setView('list') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (view === 'list' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>قائمة</button>
@@ -1034,12 +1192,14 @@ export default function LawyerCasesPage() {
                 <option value="all">عرض الكل</option>
               </select>
 
+              {!isFirm && (
               <button onClick={function () { resetCaseForm(); setShowAddCase(!showAddCase) }} className="px-5 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm">
                 {showAddCase ? 'إلغاء' : '+ إضافة قضية'}
               </button>
+              )}
             </div>
 
-            {showAddCase && (
+            {showAddCase && !isFirm && (
               <div>
                 {renderCaseForm()}
                 <button onClick={handleAddCase} disabled={savingCase} className="w-full py-3 mb-6 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60">
@@ -1059,6 +1219,8 @@ export default function LawyerCasesPage() {
 
         {selectedCase && renderCaseDetail()}
       </div>
+
+      <Footer variant={isFirm ? 'firm' : 'lawyer'} />
     </div>
   )
 }

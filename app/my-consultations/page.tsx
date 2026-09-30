@@ -175,6 +175,7 @@ export default function MyConsultationsPage() {
 
   const statusLabels: { [key: string]: string } = {
     pending: 'بانتظار الإجابة',
+    in_review: 'بانتظار الإجابة',
     answered: 'تمت الإجابة',
     needs_meeting: 'يحتاج موعداً',
     paid: 'مدفوعة',

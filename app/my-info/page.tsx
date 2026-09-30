@@ -4,13 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import Footer from '../components/Footer'
+import DeleteAccount from '../components/DeleteAccount'
 
 type Customer = {
   id: number
   full_name: string
   email: string | null
   phone: string | null
-  is_trainee: boolean | null
 }
 
 export default function MyInfoPage() {
@@ -145,9 +145,6 @@ export default function MyInfoPage() {
             </div>
             <div>
               <h2 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-1">{customer.full_name}</h2>
-              {customer.is_trainee && (
-                <p className="font-['Tajawal'] text-sm text-[#AD8A4E]">محامي متدرب يبحث عن فرصة تدريب</p>
-              )}
             </div>
           </div>
         </div>
@@ -165,6 +162,8 @@ export default function MyInfoPage() {
         <div className="text-center">
           <a href="/change-password" className="font-['Tajawal'] text-sm text-[#AD8A4E] hover:underline">تغيير كلمة المرور</a>
         </div>
+
+        <DeleteAccount />
       </div>
 
       <Footer variant="customer" />

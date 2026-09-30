@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import DeleteAccount from '../components/DeleteAccount'
 
 type Firm = {
   id: number
@@ -213,6 +214,8 @@ export default function FirmInfoPage() {
         <div className="text-center">
           <a href="/change-password" className="font-['Tajawal'] text-sm text-[#AD8A4E] hover:underline">تغيير كلمة المرور</a>
         </div>
+
+        <DeleteAccount />
       </div>
 
       <Footer variant="firm" />

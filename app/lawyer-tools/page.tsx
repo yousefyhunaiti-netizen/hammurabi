@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import WorkspaceSwitch from '../components/WorkspaceSwitch'
 
 type Tool = { href: string; label: string; desc: string; icon: string; firms: boolean }
 
@@ -17,10 +18,10 @@ const toolGroups: ToolGroup[] = [
   {
     groupLabel: 'إدارة الأعمال',
     tools: [
-      { href: '/lawyer-cases', label: 'ملفات القضايا', desc: 'قائمة وكانبان لكل قضاياك مع الجلسات والمرفقات', icon: 'folder', firms: false },
+      { href: '/lawyer-cases', label: 'ملفات القضايا', desc: 'قائمة وكانبان لكل قضاياك مع الجلسات والمرفقات', icon: 'folder', firms: true },
       { href: '/lawyer-library', label: 'مكتبتي القانونية', desc: 'احفظ القوانين ولخّصها بالذكاء الاصطناعي', icon: 'book', firms: true },
-      { href: '/wakalah', label: 'الوكالات', desc: 'ارفع وتابع وكالات عملائك', icon: 'signature', firms: false },
-      { href: '/trainee-board', label: 'أبحث عن متدرب', desc: 'انشر فرصة تدريب واعثر على المتدرب المناسب', icon: 'people', firms: false },
+      { href: '/wakalah', label: 'الوكالات', desc: 'ارفع وتابع وكالات عملائك', icon: 'signature', firms: true },
+      { href: '/hiring', label: 'التوظيف والتدريب', desc: 'انشر فرص عمل أو تدريب، أو قدّم على فرصة تناسبك', icon: 'people', firms: true },
     ],
   },
   {
@@ -353,6 +354,13 @@ export default function LawyerToolsPage() {
         </div>
       </div>
 
+      <div className="max-w-4xl mx-auto px-6 pt-6 w-full">
+        <a href="/hiring" className="flex flex-wrap items-center justify-between gap-2 bg-[#AD8A4E] text-white rounded-lg px-5 py-4 hover:bg-[#c49b58] transition">
+          <span className="font-['Tajawal'] font-bold">{accountType === 'firm' ? 'تبحث عن محامين أو متدربين؟' : 'تبحث عن وظيفة أو فرصة تدريب؟'}</span>
+          <span className="font-['Tajawal'] text-sm">{accountType === 'firm' ? 'انشر فرصة في صفحة التوظيف ←' : 'تصفّح الفرص المتاحة ←'}</span>
+        </a>
+      </div>
+
       {accountType === 'lawyer' && pendingFirmId && (
         <div className="max-w-4xl mx-auto px-6 pt-6 w-full">
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6">
@@ -369,6 +377,8 @@ export default function LawyerToolsPage() {
       )}
 
       <div className="max-w-4xl mx-auto px-6 py-10 flex-1 w-full">
+        {accountType === 'lawyer' && <WorkspaceSwitch variant="card" />}
+
         {accountType === 'lawyer' && (
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 mb-8">
             <div className="flex items-center gap-2 mb-3">

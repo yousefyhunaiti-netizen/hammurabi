@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { getLawyerBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import DeleteAccount from '../components/DeleteAccount'
 
 type Lawyer = {
   id: number
@@ -25,6 +26,7 @@ type Lawyer = {
   vacation_until: string | null
   firm_id: number | null
   pending_firm_id: number | null
+  is_trainee: boolean | null
 }
 
 type Specialty = {
@@ -144,6 +146,17 @@ export default function LawyerInfoPage() {
     await supabase.from('lawyers').update({ pending_firm_id: null }).eq('id', lawyer.id)
 
     setInviteLoading(false)
+    await loadLawyerData()
+  }
+
+  // Finishing training: the account goes back to review so the team can check
+  // the new bar status before it appears in the lawyer directory.
+  const [confirmEndTraining, setConfirmEndTraining] = useState(false)
+
+  async function handleEndTraining() {
+    if (!lawyer) return
+    await supabase.from('lawyers').update({ is_trainee: false }).eq('id', lawyer.id)
+    setConfirmEndTraining(false)
     await loadLawyerData()
   }
 
@@ -285,6 +298,23 @@ export default function LawyerInfoPage() {
               {specialtyName && (
                 <p className="font-['Tajawal'] text-[#AD8A4E]">{specialtyName}</p>
               )}
+              {lawyer.is_trainee && (
+                <p className="font-['Tajawal'] text-sm text-[#1B1A17] mt-1">
+                  <span className="px-2 py-0.5 bg-[#F0E6D2] text-[#AD8A4E] rounded-full text-xs">محامي متدرب</span>
+                  {!confirmEndTraining && (
+                    <button onClick={function () { setConfirmEndTraining(true) }} className="mr-2 text-xs text-[#4A473F] underline">أنهيت التدريب؟</button>
+                  )}
+                </p>
+              )}
+              {lawyer.is_trainee && confirmEndTraining && (
+                <div className="mt-2 bg-[#F3EEE4] rounded-md p-3">
+                  <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">سيعود حسابك للمراجعة للتحقق من صفتك كمحامي أستاذ قبل ظهورك في دليل المحامين.</p>
+                  <div className="flex gap-2">
+                    <button onClick={handleEndTraining} className="px-3 py-1.5 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-xs">تأكيد</button>
+                    <button onClick={function () { setConfirmEndTraining(false) }} className="px-3 py-1.5 bg-white text-[#4A473F] rounded-md font-['Tajawal'] text-xs">إلغاء</button>
+                  </div>
+                </div>
+              )}
               {lawyer.firm_id && firmName && (
                 <p className="font-['Tajawal'] text-sm text-[#4A473F] mt-1">أنت جزء من مكتب <strong>{firmName}</strong></p>
               )}
@@ -357,6 +387,8 @@ export default function LawyerInfoPage() {
         <div className="text-center">
           <a href="/change-password" className="font-['Tajawal'] text-sm text-[#AD8A4E] hover:underline">تغيير كلمة المرور</a>
         </div>
+
+        <DeleteAccount />
       </div>
 
       <Footer variant="lawyer" />

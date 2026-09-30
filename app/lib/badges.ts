@@ -4,7 +4,8 @@ type SupabaseClient = ReturnType<typeof createClient>
 
 // The number on the profile icon for lawyer and firm accounts:
 // consultations still waiting for an answer
-// + bookings made since the account last opened «المواعيد والاستشارات» (/lawyer-history).
+// + bookings made since the account last opened «المواعيد والاستشارات» (/lawyer-history)
+// + answers waiting for a senior review (for the senior) or for a reviewer (for the firm).
 
 async function countNewAppointments(supabase: SupabaseClient, filter: string, lastSeen: string | null) {
   if (!lastSeen) return 0
@@ -39,7 +40,14 @@ export async function getLawyerBadgeCount(supabase: SupabaseClient, lawyerId: nu
 
   const newAppointments = await countNewAppointments(supabase, appointmentFilter, lawyer ? lawyer.last_seen_appointments_at : null)
 
-  return (pendingResult.count || 0) + newAppointments
+  // answers a firm asked this lawyer (as a senior) to review
+  const reviewResult = await supabase
+    .from('consultations')
+    .select('id', { count: 'exact', head: true })
+    .eq('reviewer_id', lawyerId)
+    .eq('status', 'in_review')
+
+  return (pendingResult.count || 0) + newAppointments + (reviewResult.count || 0)
 }
 
 export async function getFirmBadgeCount(supabase: SupabaseClient, firmId: number) {
@@ -65,7 +73,15 @@ export async function getFirmBadgeCount(supabase: SupabaseClient, firmId: number
 
   const newAppointments = await countNewAppointments(supabase, firmFilter, firmResult.data ? firmResult.data.last_seen_appointments_at : null)
 
-  return (pendingResult.count || 0) + newAppointments
+  // answers waiting for the firm to pick a senior reviewer
+  const reviewResult = await supabase
+    .from('consultations')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'in_review')
+    .is('reviewer_id', null)
+    .or(firmFilter)
+
+  return (pendingResult.count || 0) + newAppointments + (reviewResult.count || 0)
 }
 
 // Called when /lawyer-history opens: bookings made before now stop counting as new.

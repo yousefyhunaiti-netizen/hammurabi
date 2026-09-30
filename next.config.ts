@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The trainee board became the hiring page; old links still work.
+  async redirects() {
+    return [
+      { source: "/trainee-board", destination: "/hiring?tab=training", permanent: true },
+    ];
+  },
+
   // Browser security settings sent with every page.
   async headers() {
     return [

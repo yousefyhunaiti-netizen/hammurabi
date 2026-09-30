@@ -135,7 +135,7 @@ export default function LawyersPage() {
       setCheckingAuth(false)
 
       // No ranking: lawyers and firms appear in a random order, shuffled once per visit
-      const lawyersResult = await supabase.from('lawyers').select('*').eq('is_approved', true).eq('is_active', true)
+      const lawyersResult = await supabase.from('lawyers').select('*').eq('is_approved', true).eq('is_active', true).eq('is_trainee', false)
       setLawyers(shuffle(lawyersResult.data || []))
 
       const firmsResult = await supabase.from('firms').select('*').eq('is_approved', true).eq('is_active', true)
@@ -483,12 +483,6 @@ export default function LawyersPage() {
             </div>
           )}
         </div>
-      </div>
-
-      <div className="bg-[#F3EEE4] border-b border-[#D8D2C4] py-2 text-center">
-        <a href="/trainee-board" className="font-['Tajawal'] text-sm text-[#1B1A17] hover:text-[#AD8A4E] transition">
-          هل أنت متدرب تبحث عن محامي؟ تصفح لوحة فرص التدريب الآن ←
-        </a>
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-10 flex-1 w-full">

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import WorkspaceSwitch from '../components/WorkspaceSwitch'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 type Invoice = {
@@ -787,6 +788,8 @@ export default function LawyerInvoicesPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-10 flex-1 w-full">
+        {accountType === 'lawyer' && <WorkspaceSwitch />}
+
         {accountType === 'firm' && (
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-4 mb-6">
             <select

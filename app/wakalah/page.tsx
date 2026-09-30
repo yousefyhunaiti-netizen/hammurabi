@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { uploadOwnFile, openPrivateFile } from '../lib/files'
-import { getLawyerBadgeCount } from '../lib/badges'
+import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import WorkspaceSwitch from '../components/WorkspaceSwitch'
 
 type WakalahDoc = {
   id: number
@@ -32,6 +33,11 @@ type LegalCase = {
   id: number
   case_number: string
   client_name: string
+}
+
+type RosterLawyer = {
+  id: number
+  full_name: string
 }
 
 const wakalahTypes = ['عامة عدلية', 'خاصة عدلية', 'وكالة محامي']
@@ -66,6 +72,12 @@ export default function WakalahPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [totalUnread, setTotalUnread] = useState(0)
   const [pendingConsultations, setPendingConsultations] = useState(0)
+
+  // Firms see their lawyers' shared wakalahs, read-only, with a lawyer filter.
+  const [accountType, setAccountType] = useState<'lawyer' | 'firm'>('lawyer')
+  const [roster, setRoster] = useState<RosterLawyer[]>([])
+  const [lawyerFilter, setLawyerFilter] = useState('all')
+  const isFirm = accountType === 'firm'
 
   const [docs, setDocs] = useState<WakalahDoc[]>([])
   const [cases, setCases] = useState<LegalCase[]>([])
@@ -136,10 +148,43 @@ export default function WakalahPage() {
         return
       }
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userResult.data.user.id).maybeSingle()
+      const userId = userResult.data.user.id
+      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
 
       if (!lawyerResult.data) {
-        setNotAllowed(true)
+        const firmResult = await supabase.from('firms').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+
+        if (!firmResult.data) {
+          setNotAllowed(true)
+          setLoading(false)
+          return
+        }
+
+        if (!firmResult.data.is_active && !firmResult.data.is_comped) {
+          setNotSubscribed(true)
+          setLoading(false)
+          return
+        }
+
+        setAccountType('firm')
+
+        const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmResult.data.id).eq('is_read', false)
+        setTotalUnread(countConversations(firmUnreadResult.data || []))
+        setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
+
+        const rosterResult = await supabase.from('lawyers').select('id, full_name').eq('firm_id', firmResult.data.id)
+        const rosterRows: RosterLawyer[] = rosterResult.data || []
+        setRoster(rosterRows)
+        const rosterIds = rosterRows.map(function (l) { return l.id })
+
+        // The database returns only shared (non-private) records of the firm's lawyers.
+        if (rosterIds.length > 0) {
+          const firmCasesResult = await supabase.from('legal_cases').select('id, case_number, client_name').in('lawyer_id', rosterIds)
+          setCases(firmCasesResult.data || [])
+          const firmDocsResult = await supabase.from('wakalah_documents').select('*').in('lawyer_id', rosterIds).order('id', { ascending: false })
+          setDocs(firmDocsResult.data || [])
+        }
+
         setLoading(false)
         return
       }
@@ -271,7 +316,13 @@ export default function WakalahPage() {
     return found ? 'قضية ' + found.case_number : ''
   }
 
+  function getRosterName(id: number) {
+    const found = roster.find(function (l) { return l.id === id })
+    return found ? found.full_name : ''
+  }
+
   const filteredDocs = docs.filter(function (d) {
+    if (isFirm && lawyerFilter !== 'all' && d.lawyer_id !== Number(lawyerFilter)) return false
     const revoked = d.status === 'revoked'
     const expired = isExpired(d)
     if (statusFilter === 'active' && (revoked || expired)) return false
@@ -324,6 +375,7 @@ export default function WakalahPage() {
         <div className="flex justify-between items-start mb-2">
           <div>
             <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{d.client_name}</p>
+            {isFirm && <p className="font-['Tajawal'] text-xs text-[#1B1A17]">المحامي: {getRosterName(d.lawyer_id)}</p>}
             {d.case_id && <p className="font-['Tajawal'] text-xs text-[#AD8A4E]">{getCaseLabel(d.case_id)}</p>}
           </div>
           <span className={"px-3 py-1 text-xs font-['Tajawal'] rounded-full whitespace-nowrap " + badgeClass}>{badgeText}</span>
@@ -350,7 +402,7 @@ export default function WakalahPage() {
         <div className="flex gap-2 items-center flex-wrap">
           {d.lawyer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', d.lawyer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#AD8A4E] underline">عرض ملف الوكالة</button>}
           {d.customer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', d.customer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#2F4538] underline">النسخة الموقّعة من العميل</button>}
-          {!isRevoked && (
+          {!isRevoked && !isFirm && (
             <button onClick={revokeClick} className="font-['Tajawal'] text-xs text-[#7A2E2E] mr-auto">إلغاء الوكالة</button>
           )}
         </div>
@@ -377,7 +429,7 @@ export default function WakalahPage() {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center px-6">
         <div className="text-center">
-          <p className="font-['Tajawal'] text-[#4A473F] mb-4">هذه الصفحة مخصصة لحسابات المحامين فقط</p>
+          <p className="font-['Tajawal'] text-[#4A473F] mb-4">هذه الصفحة مخصصة لحسابات المحامين والمكاتب فقط</p>
           <a href="/login" className="inline-block px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal']">تسجيل الدخول</a>
         </div>
       </div>
@@ -404,6 +456,9 @@ export default function WakalahPage() {
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
             <div className="flex gap-5 items-center">
+              {isFirm && (
+                <a href="/firm-dashboard" className="hover:text-[#AD8A4E] transition">لوحة التحكم</a>
+              )}
               <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
               <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
@@ -425,7 +480,7 @@ export default function WakalahPage() {
                 {menuOpen && (
                   <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
                     <a href="/subscription" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">ترقية الاشتراك</a>
-                    <a href="/lawyer-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">معلوماتي الشخصية</a>
+                    <a href={isFirm ? '/firm-info' : '/lawyer-info'} className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">معلوماتي الشخصية</a>
                     <a href="/lawyer-history" className="relative block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">
                       المواعيد والاستشارات
                       {pendingConsultations > 0 && (
@@ -439,11 +494,20 @@ export default function WakalahPage() {
             </div>
           </div>
           <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">الوكالات ({docs.length})</h1>
-          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">سجّل وكالات موكليك وتابع تواريخ تصديقها وانتهائها</p>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">{isFirm ? 'وكالات محامي المكتب — للاطلاع فقط' : 'سجّل وكالات موكليك وتابع تواريخ تصديقها وانتهائها'}</p>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-10 flex-1 w-full">
+        {!isFirm && <WorkspaceSwitch />}
+
+        {isFirm && (
+          <select value={lawyerFilter} onChange={function (e) { setLawyerFilter(e.target.value) }} className="w-full px-3 py-2 mb-4 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+            <option value="all">جميع المحامين</option>
+            {roster.map(function (l) { return <option key={l.id} value={String(l.id)}>{l.full_name}</option> })}
+          </select>
+        )}
+
         <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
           <div className="flex gap-2">
             <input type="text" value={search} onChange={function (e) { setSearch(e.target.value) }} placeholder="ابحث باسم الموكل..." className="px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
@@ -454,12 +518,14 @@ export default function WakalahPage() {
               <option value="revoked">ملغاة فقط</option>
             </select>
           </div>
+          {!isFirm && (
           <button onClick={function () { resetForm(); setShowForm(!showForm) }} className="px-5 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm">
             {showForm ? 'إلغاء' : '+ وكالة جديدة'}
           </button>
+          )}
         </div>
 
-        {showForm && (
+        {showForm && !isFirm && (
           <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-6 space-y-3">
             <input type="text" value={formClientName} onChange={function (e) { setFormClientName(e.target.value) }} placeholder="اسم الموكل" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
@@ -526,7 +592,7 @@ export default function WakalahPage() {
         {filteredDocs.map(renderDoc)}
       </div>
 
-      <Footer variant="lawyer" />
+      <Footer variant={isFirm ? 'firm' : 'lawyer'} />
     </div>
   )
 }

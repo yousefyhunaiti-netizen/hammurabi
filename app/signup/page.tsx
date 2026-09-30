@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function SignupPage() {
   const [userType, setUserType] = useState('customer')
@@ -9,8 +9,22 @@ export default function SignupPage() {
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [agreed, setAgreed] = useState(false)
+  const [isTrainee, setIsTrainee] = useState(false)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // A link like /signup?type=lawyer&trainee=1 opens the lawyer form with "trainee" ticked.
+  useEffect(function () {
+    const params = new URLSearchParams(window.location.search)
+    const type = params.get('type')
+    if (type === 'lawyer' || type === 'firm' || type === 'customer') {
+      setUserType(type)
+    }
+    if (params.get('trainee') === '1') {
+      setUserType('lawyer')
+      setIsTrainee(true)
+    }
+  }, [])
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
@@ -54,6 +68,7 @@ export default function SignupPage() {
         phone: phone,
         is_approved: false,
         is_active: false,
+        is_trainee: isTrainee,
         agreed_to_terms: true,
         agreed_at: nowStr,
       })
@@ -176,6 +191,21 @@ export default function SignupPage() {
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
               />
             </div>
+
+            {userType === 'lawyer' && (
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  id="is-trainee"
+                  checked={isTrainee}
+                  onChange={function (e) { setIsTrainee(e.target.checked) }}
+                  className="mt-1"
+                />
+                <label htmlFor="is-trainee" className="font-['Tajawal'] text-xs text-[#4A473F]">
+                  أنا محامي متدرب (ستجد فرص التدريب في صفحة التوظيف والتدريب بعد تسجيل الدخول)
+                </label>
+              </div>
+            )}
 
             <div className="flex items-start gap-2">
               <input

@@ -30,6 +30,7 @@ type FirmLawyer = {
   specialty_id: number
   city: string
   photo_url: string | null
+  is_senior: boolean | null
 }
 
 type Consultation = {
@@ -85,7 +86,7 @@ export default function FirmDashboardPage() {
   async function loadRoster(firmId: number) {
     const rosterResult = await supabase
       .from('lawyers')
-      .select('id, full_name, specialty_id, city, photo_url')
+      .select('id, full_name, specialty_id, city, photo_url, is_senior')
       .eq('firm_id', firmId)
 
     setRoster(rosterResult.data || [])
@@ -259,6 +260,13 @@ export default function FirmDashboardPage() {
 
   const unassignedConsultations = firmConsultations.filter(function (c) { return !c.lawyer_id })
 
+  // Seniors review other lawyers' consultation answers before they reach the customer.
+  async function handleToggleSenior(lawyer: FirmLawyer) {
+    if (!firm) return
+    await supabase.rpc('set_lawyer_senior', { p_lawyer_id: lawyer.id, p_value: !lawyer.is_senior })
+    await loadRoster(firm.id)
+  }
+
   function renderRosterCard(lawyer: FirmLawyer) {
     return (
       <div key={lawyer.id} className="bg-[#F3EEE4] rounded-md p-4 text-center">
@@ -271,6 +279,12 @@ export default function FirmDashboardPage() {
         )}
         <p className="font-['Tajawal'] font-medium text-sm text-[#1B1A17]">{lawyer.full_name}</p>
         <p className="font-['Tajawal'] text-xs text-[#4A473F]">{getSpecialtyName(lawyer.specialty_id)}</p>
+        <button
+          onClick={function () { handleToggleSenior(lawyer) }}
+          className={"mt-2 px-3 py-1 rounded-full font-['Tajawal'] text-xs transition " + (lawyer.is_senior ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white text-[#4A473F] border border-[#D8D2C4] hover:border-[#AD8A4E]')}
+        >
+          {lawyer.is_senior ? '✓ محامي أقدم' : 'تعيين كمحامي أقدم'}
+        </button>
       </div>
     )
   }
@@ -492,7 +506,8 @@ export default function FirmDashboardPage() {
         )}
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
-          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">محامو المكتب</h2>
+          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-1">محامو المكتب</h2>
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">عند تعيين محامي أقدم واحد على الأقل، تنتظر إجابات باقي المحامين على الاستشارات مراجعة محامي أقدم تختاره من «المواعيد والاستشارات» قبل وصولها للعميل.</p>
           {roster.length === 0 && (
             <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-2">لم ينضم أي محامي بعد</p>
           )}

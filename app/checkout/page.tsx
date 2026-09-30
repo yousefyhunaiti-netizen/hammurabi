@@ -61,6 +61,12 @@ function CheckoutContent() {
       if (tier === '5year') return 'اشتراك 5 سنوات'
       return 'اشتراك'
     }
+    if (type === 'subaccount') {
+      if (tier === 'monthly') return 'الحساب الخاص - شهري'
+      if (tier === 'yearly') return 'الحساب الخاص - سنوي'
+      if (tier === '5year') return 'الحساب الخاص - 5 سنوات'
+      return 'الحساب الخاص'
+    }
     if (type === 'featured') return 'إعلان مميز - شهر واحد'
     return 'عملية دفع'
   }
@@ -95,11 +101,22 @@ function CheckoutContent() {
       // PLACEHOLDER until PayTabs / Arab Bank: the database activates the
       // logged-in account's own plan and sets the price itself, so the
       // browser can't choose a price or activate someone else's account.
-      const activateResult = await supabase.rpc('checkout_activate_subscription', { p_tier: tier })
+      const activateResult = await supabase.rpc('checkout_activate_subscription', { p_tier: tier, p_kind: 'main' })
 
       if (activateResult.error) {
         setProcessing(false)
         setError('تعذر تفعيل الاشتراك، حاول مرة أخرى')
+        return
+      }
+    }
+
+    if (type === 'subaccount') {
+      // PLACEHOLDER until PayTabs / Arab Bank, same as above: the database sets the price.
+      const subResult = await supabase.rpc('checkout_activate_subscription', { p_tier: tier, p_kind: 'sub' })
+
+      if (subResult.error) {
+        setProcessing(false)
+        setError('تعذر تفعيل الحساب الخاص، حاول مرة أخرى')
         return
       }
     }

@@ -10,7 +10,6 @@ type Customer = {
   full_name: string
   email: string | null
   phone: string | null
-  is_trainee: boolean | null
 }
 
 export default function MyAccountPage() {
@@ -21,7 +20,6 @@ export default function MyAccountPage() {
 
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
-  const [isTrainee, setIsTrainee] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -62,7 +60,6 @@ export default function MyAccountPage() {
       setCustomer(customerResult.data)
       setFullName(customerResult.data.full_name || '')
       setPhone(customerResult.data.phone || '')
-      setIsTrainee(customerResult.data.is_trainee === true)
       setLoading(false)
     }
 
@@ -89,7 +86,6 @@ export default function MyAccountPage() {
       .update({
         full_name: fullName,
         phone: phone,
-        is_trainee: isTrainee,
       })
       .eq('id', customer.id)
 
@@ -188,11 +184,6 @@ export default function MyAccountPage() {
                 className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
               />
             </div>
-
-            <label className="flex items-center gap-2 font-['Tajawal'] text-sm text-[#4A473F]">
-              <input type="checkbox" checked={isTrainee} onChange={function (e) { setIsTrainee(e.target.checked) }} />
-              أنا محامي متدرب أبحث عن فرصة تدريب
-            </label>
 
             <button
               onClick={handleSave}

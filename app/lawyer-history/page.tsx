@@ -30,6 +30,8 @@ type Consultation = {
   answer: string | null
   fee: number | null
   created_at: string
+  reviewer_id: number | null
+  review_target: string | null
 }
 
 type CustomerName = {
@@ -41,6 +43,7 @@ type RosterLawyer = {
   id: number
   full_name: string
   specialty_id: number | null
+  is_senior: boolean | null
 }
 
 type Specialty = {
@@ -74,6 +77,7 @@ export default function LawyerHistoryPage() {
   const [feeText, setFeeText] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
+  const [reviewBusy, setReviewBusy] = useState(false)
 
   const supabase = createClient()
   const menuRef = useRef<HTMLDivElement>(null)
@@ -141,11 +145,17 @@ export default function LawyerHistoryPage() {
           .or(lawyerAppFilter)
           .order('appointment_date', { ascending: false })
 
+        // Their own consultations, plus answers a firm asked them (as a senior) to review.
         const consultResult = await supabase
           .from('consultations')
           .select('*')
-          .eq('lawyer_id', lawyerResult.data.id)
+          .or('lawyer_id.eq.' + lawyerResult.data.id + ',reviewer_id.eq.' + lawyerResult.data.id)
           .order('created_at', { ascending: false })
+
+        if (lawyerResult.data.firm_id) {
+          const colleaguesResult = await supabase.from('lawyers').select('id, full_name, specialty_id, is_senior').eq('firm_id', lawyerResult.data.firm_id)
+          setRoster(colleaguesResult.data || [])
+        }
 
         apptData = apptResult.data || []
         consultData = consultResult.data || []
@@ -173,7 +183,7 @@ export default function LawyerHistoryPage() {
         const specialtiesResult = await supabase.from('specialties').select('*')
         setSpecialties(specialtiesResult.data || [])
 
-        const rosterResult = await supabase.from('lawyers').select('id, full_name, specialty_id').eq('firm_id', firmRow.id)
+        const rosterResult = await supabase.from('lawyers').select('id, full_name, specialty_id, is_senior').eq('firm_id', firmRow.id)
         const rosterRows: RosterLawyer[] = rosterResult.data || []
         setRoster(rosterRows)
         const rosterIds = rosterRows.map(function (l) { return l.id })
@@ -276,6 +286,7 @@ export default function LawyerHistoryPage() {
     if (status === 'answered') return 'تمت الإجابة'
     if (status === 'paid') return 'مدفوعة'
     if (status === 'needs_meeting') return 'يحتاج موعداً'
+    if (status === 'in_review') return 'بانتظار مراجعة المحامي الأقدم'
     return status
   }
 
@@ -377,7 +388,7 @@ export default function LawyerHistoryPage() {
       .update({ answer: answerValue, fee: feeValue, status: 'answered' })
       .eq('id', consultationId)
       .eq('lawyer_id', accountId)
-      .select('id')
+      .select('id, status, review_target')
 
     setSending(false)
 
@@ -386,9 +397,12 @@ export default function LawyerHistoryPage() {
       return
     }
 
+    const savedStatus = updateResult.data[0].status
+    const savedTarget = updateResult.data[0].review_target
+
     setConsultations(consultations.map(function (c) {
       if (c.id === consultationId) {
-        return { ...c, answer: answerValue, fee: feeValue, status: 'answered' }
+        return { ...c, answer: answerValue, fee: feeValue, status: savedStatus, review_target: savedTarget }
       }
       return c
     }))
@@ -410,7 +424,7 @@ export default function LawyerHistoryPage() {
       .update({ answer: noteValue, fee: 0, status: 'needs_meeting' })
       .eq('id', consultationId)
       .eq('lawyer_id', accountId)
-      .select('id')
+      .select('id, status, review_target')
 
     setSending(false)
 
@@ -419,11 +433,73 @@ export default function LawyerHistoryPage() {
       return
     }
 
+    const savedStatus = updateResult.data[0].status
+    const savedTarget = updateResult.data[0].review_target
+
     setConsultations(consultations.map(function (c) {
       if (c.id === consultationId) {
-        return { ...c, answer: noteValue, fee: 0, status: 'needs_meeting' }
+        return { ...c, answer: noteValue, fee: 0, status: savedStatus, review_target: savedTarget }
       }
       return c
+    }))
+    setSelectedConsultation(null)
+  }
+
+  // Firm: choose which senior reviews an answer.
+  async function handleAssignReviewer(consultationId: number, reviewerId: number) {
+    setReviewBusy(true)
+    setSendError('')
+    const result = await supabase.rpc('assign_consultation_reviewer', { p_consultation_id: consultationId, p_reviewer_id: reviewerId })
+    setReviewBusy(false)
+
+    if (result.error || result.data !== true) {
+      setSendError('تعذر إسناد المراجعة، حاول مرة أخرى')
+      return
+    }
+
+    setConsultations(consultations.map(function (c) {
+      return c.id === consultationId ? { ...c, reviewer_id: reviewerId } : c
+    }))
+    if (selectedConsultation && selectedConsultation.id === consultationId) {
+      setSelectedConsultation({ ...selectedConsultation, reviewer_id: reviewerId })
+    }
+  }
+
+  // Senior: approve (and possibly edit) the answer; only then does it reach the customer.
+  async function handleApproveReview() {
+    if (!selectedConsultation) return
+    const c = selectedConsultation
+    const target = c.review_target || 'answered'
+    setSendError('')
+
+    if (target === 'answered') {
+      if (!answerText.trim()) {
+        setSendError('يرجى كتابة الإجابة أولاً')
+        return
+      }
+      if (feeText.trim() === '' || isNaN(Number(feeText)) || Number(feeText) < 0) {
+        setSendError('يرجى إدخال المبلغ (رقم صحيح أو صفر)')
+        return
+      }
+    }
+
+    setReviewBusy(true)
+    const feeValue = target === 'answered' ? Number(feeText) : 0
+    const result = await supabase.rpc('approve_consultation_review', {
+      p_consultation_id: c.id,
+      p_answer: answerText.trim(),
+      p_fee: feeValue,
+    })
+    setReviewBusy(false)
+
+    if (result.error) {
+      setSendError('تعذر اعتماد الإجابة، حاول مرة أخرى')
+      return
+    }
+
+    const newStatus = typeof result.data === 'string' ? result.data : target
+    setConsultations(consultations.map(function (item) {
+      return item.id === c.id ? { ...item, answer: answerText.trim() || null, fee: feeValue, status: newStatus } : item
     }))
     setSelectedConsultation(null)
   }
@@ -453,7 +529,12 @@ export default function LawyerHistoryPage() {
     }
     return (
       <div key={c.id} onClick={cardClick} className="cursor-pointer bg-white border border-[#D8D2C4] rounded-lg p-4 mb-3 hover:border-[#AD8A4E] transition">
-        <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">{getCustomerName(c.customer_id)}</p>
+        <div className="flex items-center gap-2 mb-1">
+          <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{getCustomerName(c.customer_id)}</p>
+          {accountType === 'lawyer' && c.reviewer_id === accountId && c.lawyer_id !== accountId && c.status === 'in_review' && (
+            <span className="px-2 py-0.5 bg-[#AD8A4E] text-white text-[10px] font-['Tajawal'] rounded-full">للمراجعة</span>
+          )}
+        </div>
         <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1 line-clamp-2">{c.question}</p>
         {accountType === 'firm' && (
           <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">{getConsultOwnerLabel(c)}</p>
@@ -469,6 +550,12 @@ export default function LawyerHistoryPage() {
     const c = selectedConsultation
     const canAnswer = accountType === 'lawyer' && c.lawyer_id === accountId && c.status === 'pending'
     const hasAnswer = c.status === 'answered' || c.status === 'paid'
+    const inReview = c.status === 'in_review'
+    const canReview = inReview && accountType === 'lawyer' && c.reviewer_id === accountId && c.lawyer_id !== accountId
+    const reviewIsMeeting = c.review_target === 'needs_meeting'
+    const seniors = roster.filter(function (l) { return l.is_senior && l.id !== c.lawyer_id })
+    const iAmSenior = roster.some(function (l) { return l.id === accountId && l.is_senior })
+    const willBeReviewed = accountType === 'lawyer' && !iAmSenior && roster.some(function (l) { return l.is_senior && l.id !== accountId })
 
     function stopPropagation(e: React.MouseEvent) {
       e.stopPropagation()
@@ -522,7 +609,9 @@ export default function LawyerHistoryPage() {
               >
                 {sending ? 'جاري الإرسال...' : 'إرسال الإجابة للعميل'}
               </button>
-              <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-2">بعد الإرسال لا يمكن تعديل الإجابة.</p>
+              <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-2">
+                {willBeReviewed ? 'سيراجع محامي أقدم في المكتب إجابتك قبل وصولها للعميل. بعد الإرسال لا يمكنك تعديلها.' : 'بعد الإرسال لا يمكن تعديل الإجابة.'}
+              </p>
 
               <div className="mt-5 pt-4 border-t border-[#D8D2C4]">
                 <p className="font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed mb-3">
@@ -553,6 +642,86 @@ export default function LawyerHistoryPage() {
               {c.answer && (
                 <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed whitespace-pre-wrap">{c.answer}</p>
               )}
+            </div>
+          )}
+
+          {canReview && (
+            <div>
+              <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">
+                مراجعة {reviewIsMeeting ? 'توصية بحجز موعد' : 'إجابة'} {getLawyerName(c.lawyer_id) ? 'المحامي ' + getLawyerName(c.lawyer_id) : ''}
+              </p>
+              <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">يمكنك تعديل النص قبل الاعتماد. لن يصل للعميل إلا بعد اعتمادك.</p>
+              <textarea
+                value={answerText}
+                onChange={function (e) { setAnswerText(e.target.value) }}
+                rows={6}
+                className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+              />
+              {!reviewIsMeeting && (
+                <div>
+                  <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">المبلغ المطلوب من العميل (دينار أردني)</p>
+                  <input
+                    type="number"
+                    min="0"
+                    value={feeText}
+                    onChange={function (e) { setFeeText(e.target.value) }}
+                    className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+                  />
+                </div>
+              )}
+              {sendError && <p className="font-['Tajawal'] text-sm text-[#7A2E2E] mb-3">{sendError}</p>}
+              <button
+                onClick={handleApproveReview}
+                disabled={reviewBusy}
+                className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60"
+              >
+                {reviewBusy ? 'جاري الاعتماد...' : 'اعتماد وإرسال للعميل'}
+              </button>
+            </div>
+          )}
+
+          {inReview && !canReview && accountType === 'lawyer' && (
+            <div className="bg-[#F3EEE4] border border-[#AD8A4E] rounded-md p-4">
+              <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">
+                {reviewIsMeeting ? 'توصيتك' : 'إجابتك'} بانتظار مراجعة المحامي الأقدم{c.reviewer_id && getLawyerName(c.reviewer_id) ? ' (' + getLawyerName(c.reviewer_id) + ')' : ''}
+              </p>
+              {c.answer && <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed whitespace-pre-wrap">{c.answer}</p>}
+            </div>
+          )}
+
+          {inReview && accountType === 'firm' && (
+            <div className="bg-[#F3EEE4] border border-[#AD8A4E] rounded-md p-4">
+              <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">
+                {reviewIsMeeting ? 'توصية بحجز موعد' : 'إجابة'} بانتظار المراجعة
+              </p>
+              {c.answer && <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed whitespace-pre-wrap mb-3">{c.answer}</p>}
+              {seniors.length === 0 ? (
+                <p className="font-['Tajawal'] text-sm text-[#4A473F]">
+                  لا يوجد محامون أقدم لمراجعتها. عيّنهم من <a href="/firm-dashboard" className="text-[#AD8A4E] underline">لوحة التحكم</a>.
+                </p>
+              ) : (
+                <div>
+                  <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">
+                    {c.reviewer_id ? 'قيد المراجعة لدى: ' + getLawyerName(c.reviewer_id) + ' — يمكنك تغيير المراجع:' : 'اختر المحامي الأقدم الذي سيراجعها:'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {seniors.map(function (s) {
+                      const isCurrent = c.reviewer_id === s.id
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={function () { if (!isCurrent) handleAssignReviewer(c.id, s.id) }}
+                          disabled={reviewBusy}
+                          className={"px-3 py-1.5 rounded-md font-['Tajawal'] text-xs disabled:opacity-60 " + (isCurrent ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white text-[#1B1A17] border border-[#D8D2C4] hover:border-[#AD8A4E]')}
+                        >
+                          {isCurrent ? '✓ ' : ''}{s.full_name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {sendError && <p className="font-['Tajawal'] text-sm text-[#7A2E2E] mt-3">{sendError}</p>}
             </div>
           )}
 
