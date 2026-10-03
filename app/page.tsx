@@ -10,35 +10,9 @@ import './home.css'
 
 type AccountKind = 'guest' | 'customer' | 'lawyer' | 'firm'
 
-type Audience = 'customer' | 'lawyer' | 'firm' | 'trainee'
-
-const AUDIENCES: { key: Audience | 'all'; label: string }[] = [
-  { key: 'all', label: 'الكل' },
-  { key: 'customer', label: 'للعملاء' },
-  { key: 'lawyer', label: 'للمحامين' },
-  { key: 'firm', label: 'للمكاتب' },
-  { key: 'trainee', label: 'للمتدربين' },
-]
-
-// Everything Hammurabi offers beyond Laila's story, and who each one is for.
-const SERVICES: { title: string; text: string; icon: string; for: Audience[] }[] = [
-  { title: 'المساعد الذكي', text: 'للعميل: شرح بسيط واقتراح الاختصاص. للمحامي: إجابات معمّقة كزميل مهنة.', icon: 'M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3L12 3zM5 17l.9 2.1L8 20l-2.1.9L5 23l-.9-2.1L2 20l2.1-.9L5 17z', for: ['customer', 'lawyer', 'firm', 'trainee'] },
-  { title: 'التوظيف والتدريب', text: 'فرص عمل للمحامين وفرص تدريب للمتدربين، ينشرها أي محامي أو مكتب، وتتابع طلباتك من «طلباتي».', icon: 'M4 8h16v11H4zM9 8V5h6v3M4 13h16', for: ['lawyer', 'firm', 'trainee'] },
-  { title: 'حساب المحامي المتدرب', text: 'سجّل كمحامي متدرب، تصفّح فرص التدريب وقدّم عليها، وانتقل لحساب محامي عند انتهاء تدريبك.', icon: 'M12 4l9 4-9 4-9-4 9-4zM7 10v5c0 1.5 2.2 3 5 3s5-1.5 5-3v-5', for: ['trainee'] },
-  { title: 'مقالات قانونية', text: 'مقالات يكتبها محامون ومكاتب موثّقون لتزيد معرفتك القانونية.', icon: 'M5 4h10l4 4v12H5zM9 12h6M9 16h6', for: ['customer', 'lawyer', 'firm'] },
-  { title: 'تقييم المحامين', text: 'بعد موعدك أو استشارتك المدفوعة، قيّم المحامي أو المكتب ليستفيد غيرك.', icon: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7L12 3z', for: ['customer'] },
-  { title: 'مجتمع المحامين', text: 'انشر، علّق، وتبادل الخبرة مع زملائك، باسمك أو باسم مكتبك.', icon: 'M8 11a3 3 0 100-6 3 3 0 000 6zM16 11a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 2.7-5 6-5s6 2 6 5M14 15c3.3 0 8 1 8 5', for: ['lawyer', 'firm', 'trainee'] },
-  { title: 'المكتبة القانونية', text: 'القوانين والقرارات التي تحتاجها، مع المفضلة وملخص بالذكاء الاصطناعي وربط بالقضية.', icon: 'M4 5h5v15H4zM10 5h5v15h-5zM16 6l4 1-3 13-4-1z', for: ['lawyer', 'firm'] },
-  { title: 'الوكالات', text: 'سجل وكالاتك العامة والخاصة ووكالات المحامين، مع تواريخ التصديق والانتهاء.', icon: 'M6 3h9l4 4v14H6zM9 13l2 2 4-4', for: ['lawyer', 'firm'] },
-  { title: 'الرسائل', text: 'مراسلة مباشرة بين المحامين والمكاتب داخل المنصة.', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z', for: ['lawyer', 'firm'] },
-  { title: 'الحساب الخاص', text: 'لمحامي المكتب: مساحة مستقلة لقضاياه وموكليه الخاصين لا يراها المكتب، بضغطة واحدة.', icon: 'M6 11h12v9H6zM9 11V8a3 3 0 016 0v3', for: ['lawyer'] },
-  { title: 'محامون بلا أسماء', text: 'للمكتب: اعرض المكتب للعملاء دون أسماء محاميه، والحجز يذهب للمحامي المختص تلقائياً.', icon: 'M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6', for: ['firm'] },
-]
-
 export default function HomePage() {
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [account, setAccount] = useState<AccountKind>('guest')
-  const [audience, setAudience] = useState<Audience | 'all'>('all')
   const [menuOpen, setMenuOpen] = useState(false)
   const [totalUnread, setTotalUnread] = useState(0)
   const [badgeCount, setBadgeCount] = useState(0)
@@ -646,46 +620,6 @@ export default function HomePage() {
                 </div>
               </div>
             </article>
-          </div>
-        </div>
-      </section>
-
-      <section className="hm-more" id="services">
-        <div className="hm-wrap">
-          <header className="hm-story-head">
-            <p className="hm-eyebrow">أكثر من قصة ليلى</p>
-            <h2>خدمات حمورابي لكل واحد منكم</h2>
-            <p className="hm-sub">اختر من أنت لترى ما يناسبك.</p>
-          </header>
-          <div className="hm-chips" role="tablist" aria-label="لمن الخدمة">
-            {AUDIENCES.map(function (a) {
-              const count = a.key === 'all' ? SERVICES.length : SERVICES.filter(function (x) { return x.for.indexOf(a.key as Audience) !== -1 }).length
-              return (
-                <button key={a.key} type="button" role="tab" aria-selected={audience === a.key} className={audience === a.key ? 'on' : ''} onClick={function () { setAudience(a.key) }}>
-                  {a.label} <span className="hm-num">{count}</span>
-                </button>
-              )
-            })}
-          </div>
-          <div className="hm-services">
-            {SERVICES.map(function (x) {
-              const shown = audience === 'all' || x.for.indexOf(audience) !== -1
-              return (
-                <article key={x.title} className={'hm-service' + (shown ? '' : ' off')} aria-hidden={!shown}>
-                  <span className="hm-service-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={x.icon} /></svg>
-                  </span>
-                  <h3>{x.title}</h3>
-                  <p>{x.text}</p>
-                  <span className="hm-tags">
-                    {x.for.map(function (f) {
-                      const label = f === 'customer' ? 'عميل' : f === 'lawyer' ? 'محامي' : f === 'firm' ? 'مكتب' : 'متدرب'
-                      return <i key={f}>{label}</i>
-                    })}
-                  </span>
-                </article>
-              )
-            })}
           </div>
         </div>
       </section>
