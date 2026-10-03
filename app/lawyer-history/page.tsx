@@ -385,10 +385,10 @@ export default function LawyerHistoryPage() {
     const ms = new Date(due).getTime() - now
     const isAnswer = c.status === 'pending'
     if (ms < 0) {
-      return { overdue: true, label: isAnswer ? 'تجاوزت مهلة الإجابة' : 'تجاوزت مهلة المراجعة' }
+      return { overdue: true, label: isAnswer ? 'تجاوزت وقت الاستجابة المحدد' : 'تجاوزت وقت المراجعة المحدد' }
     }
     const hours = Math.ceil(ms / 3600000)
-    return { overdue: false, label: (isAnswer ? 'مهلة الإجابة: ' : 'مهلة المراجعة: ') + (hours <= 1 ? 'أقل من ساعة' : hours + ' ساعة متبقية') }
+    return { overdue: false, label: (isAnswer ? 'وقت الاستجابة: ' : 'وقت المراجعة: ') + (hours <= 1 ? 'أقل من ساعة' : hours + ' ساعة متبقية') }
   }
 
   const overdueAlerts: OverdueAlert[] = consultations.filter(function (c) {
@@ -399,8 +399,8 @@ export default function LawyerHistoryPage() {
       ? (accountType === 'firm' ? (getLawyerName(c.lawyer_id) || 'المكتب') : '')
       : (accountType === 'firm' ? (getLawyerName(c.reviewer_id) || 'لم يُختر مراجع بعد') : '')
     const base = c.status === 'pending'
-      ? 'تجاوزت استشارة ' + getCustomerName(c.customer_id) + ' مهلة الإجابة'
-      : 'تجاوزت مراجعة إجابة على استشارة ' + getCustomerName(c.customer_id) + ' المهلة'
+      ? 'تجاوزت استشارة ' + getCustomerName(c.customer_id) + ' وقت الاستجابة المحدد'
+      : 'تجاوزت مراجعة إجابة على استشارة ' + getCustomerName(c.customer_id) + ' الوقت المحدد'
     return { consultationId: c.id, message: base + (who ? ' (' + who + ')' : '') }
   })
 
@@ -423,7 +423,7 @@ export default function LawyerHistoryPage() {
     const kind = c.status === 'pending' ? 'answer' : 'review'
     const result = await supabase.rpc('set_consultation_deadline', { p_consultation_id: c.id, p_kind: kind, p_hours: Math.round(hours) })
     if (result.error || result.data !== true) {
-      setDeadlineMessage('تعذر تعديل المهلة، حاول مرة أخرى')
+      setDeadlineMessage('تعذر تعديل الوقت، حاول مرة أخرى')
       return
     }
     const newDue = new Date(Date.now() + Math.round(hours) * 3600000).toISOString()
@@ -431,7 +431,7 @@ export default function LawyerHistoryPage() {
     setConsultations(consultations.map(function (item) { return item.id === c.id ? updated : item }))
     setSelectedConsultation(updated)
     setDeadlineHours('')
-    setDeadlineMessage('تم تعديل المهلة')
+    setDeadlineMessage('تم تعديل الوقت')
   }
 
   function openConsultation(c: Consultation) {
@@ -684,11 +684,11 @@ export default function LawyerHistoryPage() {
           {accountType === 'firm' && (c.status === 'pending' || c.status === 'in_review') && (
             <div className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-3 mb-4">
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">
-                تعديل مهلة {c.status === 'pending' ? 'الإجابة' : 'المراجعة'} لهذه الاستشارة (بالساعات، تُحسب من الآن)
+                تعديل وقت {c.status === 'pending' ? 'الاستجابة' : 'المراجعة'} لهذه الاستشارة (بالساعات، تُحسب من الآن)
               </p>
               <div className="flex gap-2">
                 <input type="number" min="1" max="720" value={deadlineHours} onChange={function (e) { setDeadlineHours(e.target.value) }} placeholder="مثال: 12" className="flex-1 px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-                <button type="button" onClick={function () { handleSetDeadline(c) }} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-xs">حفظ المهلة</button>
+                <button type="button" onClick={function () { handleSetDeadline(c) }} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-xs">حفظ الوقت</button>
               </div>
               {deadlineMessage && <p className="font-['Tajawal'] text-xs text-[#2F4538] mt-2">{deadlineMessage}</p>}
             </div>

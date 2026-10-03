@@ -10,56 +10,38 @@ import './home.css'
 
 type AccountKind = 'guest' | 'customer' | 'lawyer' | 'firm'
 
-// Counts up from 0 to the live number once the hero stats are on screen.
-function CountUp(props: { value: number }) {
-  const [shown, setShown] = useState(0)
-  const ref = useRef<HTMLElement>(null)
+type Audience = 'customer' | 'lawyer' | 'firm' | 'trainee'
 
-  useEffect(function () {
-    const el = ref.current
-    if (!el || props.value <= 0) {
-      setShown(props.value)
-      return
-    }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setShown(props.value)
-      return
-    }
+const AUDIENCES: { key: Audience | 'all'; label: string }[] = [
+  { key: 'all', label: 'الكل' },
+  { key: 'customer', label: 'للعملاء' },
+  { key: 'lawyer', label: 'للمحامين' },
+  { key: 'firm', label: 'للمكاتب' },
+  { key: 'trainee', label: 'للمتدربين' },
+]
 
-    let frame = 0
-    const target = props.value
-    const observer = new IntersectionObserver(function (entries) {
-      if (!entries[0].isIntersecting) return
-      observer.disconnect()
-      const startTime = performance.now()
-      function tick(now: number) {
-        const t = Math.min(1, (now - startTime) / 1200)
-        const eased = 1 - Math.pow(1 - t, 3)
-        setShown(Math.round(target * eased))
-        if (t < 1) frame = requestAnimationFrame(tick)
-      }
-      frame = requestAnimationFrame(tick)
-    })
-    observer.observe(el)
-
-    return function () {
-      observer.disconnect()
-      cancelAnimationFrame(frame)
-    }
-  }, [props.value])
-
-  return <strong ref={ref}>{shown}+</strong>
-}
+// Everything Hammurabi offers beyond Laila's story, and who each one is for.
+const SERVICES: { title: string; text: string; icon: string; for: Audience[] }[] = [
+  { title: 'المساعد الذكي', text: 'للعميل: شرح بسيط واقتراح الاختصاص. للمحامي: إجابات معمّقة كزميل مهنة.', icon: 'M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3L12 3zM5 17l.9 2.1L8 20l-2.1.9L5 23l-.9-2.1L2 20l2.1-.9L5 17z', for: ['customer', 'lawyer', 'firm', 'trainee'] },
+  { title: 'التوظيف والتدريب', text: 'فرص عمل للمحامين وفرص تدريب للمتدربين، ينشرها أي محامي أو مكتب، وتتابع طلباتك من «طلباتي».', icon: 'M4 8h16v11H4zM9 8V5h6v3M4 13h16', for: ['lawyer', 'firm', 'trainee'] },
+  { title: 'حساب المحامي المتدرب', text: 'سجّل كمحامي متدرب، تصفّح فرص التدريب وقدّم عليها، وانتقل لحساب محامي عند انتهاء تدريبك.', icon: 'M12 4l9 4-9 4-9-4 9-4zM7 10v5c0 1.5 2.2 3 5 3s5-1.5 5-3v-5', for: ['trainee'] },
+  { title: 'مقالات قانونية', text: 'مقالات يكتبها محامون ومكاتب موثّقون لتزيد معرفتك القانونية.', icon: 'M5 4h10l4 4v12H5zM9 12h6M9 16h6', for: ['customer', 'lawyer', 'firm'] },
+  { title: 'تقييم المحامين', text: 'بعد موعدك أو استشارتك المدفوعة، قيّم المحامي أو المكتب ليستفيد غيرك.', icon: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7L12 3z', for: ['customer'] },
+  { title: 'مجتمع المحامين', text: 'انشر، علّق، وتبادل الخبرة مع زملائك، باسمك أو باسم مكتبك.', icon: 'M8 11a3 3 0 100-6 3 3 0 000 6zM16 11a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 2.7-5 6-5s6 2 6 5M14 15c3.3 0 8 1 8 5', for: ['lawyer', 'firm', 'trainee'] },
+  { title: 'المكتبة القانونية', text: 'القوانين والقرارات التي تحتاجها، مع المفضلة وملخص بالذكاء الاصطناعي وربط بالقضية.', icon: 'M4 5h5v15H4zM10 5h5v15h-5zM16 6l4 1-3 13-4-1z', for: ['lawyer', 'firm'] },
+  { title: 'الوكالات', text: 'سجل وكالاتك العامة والخاصة ووكالات المحامين، مع تواريخ التصديق والانتهاء.', icon: 'M6 3h9l4 4v14H6zM9 13l2 2 4-4', for: ['lawyer', 'firm'] },
+  { title: 'الرسائل', text: 'مراسلة مباشرة بين المحامين والمكاتب داخل المنصة.', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z', for: ['lawyer', 'firm'] },
+  { title: 'الحساب الخاص', text: 'لمحامي المكتب: مساحة مستقلة لقضاياه وموكليه الخاصين لا يراها المكتب، بضغطة واحدة.', icon: 'M6 11h12v9H6zM9 11V8a3 3 0 016 0v3', for: ['lawyer'] },
+  { title: 'محامون بلا أسماء', text: 'للمكتب: اعرض المكتب للعملاء دون أسماء محاميه، والحجز يذهب للمحامي المختص تلقائياً.', icon: 'M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6', for: ['firm'] },
+]
 
 export default function HomePage() {
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [account, setAccount] = useState<AccountKind>('guest')
+  const [audience, setAudience] = useState<Audience | 'all'>('all')
   const [menuOpen, setMenuOpen] = useState(false)
   const [totalUnread, setTotalUnread] = useState(0)
   const [badgeCount, setBadgeCount] = useState(0)
-  const [lawyerCount, setLawyerCount] = useState(0)
-  const [specialtyCount, setSpecialtyCount] = useState(0)
-  const [cityCount, setCityCount] = useState(0)
 
   const supabase = createClient()
   const router = useRouter()
@@ -102,14 +84,6 @@ export default function HomePage() {
 
       setCheckingAuth(false)
 
-      const lawyersCountResult = await supabase.from('lawyers').select('id, city', { count: 'exact' }).eq('is_approved', true).eq('is_active', true).eq('is_trainee', false)
-      const specialtiesCountResult = await supabase.from('specialties').select('id', { count: 'exact', head: true })
-
-      setLawyerCount(lawyersCountResult.count || 0)
-      setSpecialtyCount(specialtiesCountResult.count || 0)
-
-      const uniqueCities = new Set((lawyersCountResult.data || []).map(function (l) { return l.city }).filter(Boolean))
-      setCityCount(uniqueCities.size)
     }
 
     loadData()
@@ -369,6 +343,18 @@ export default function HomePage() {
     )
   }
 
+  // Under each part of the story: sign up as that kind of account, or log in.
+  function renderActCta(kind: 'customer' | 'lawyer' | 'firm') {
+    if (checkingAuth || loggedIn) return null
+    const label = kind === 'customer' ? 'سجّل كعميل' : kind === 'lawyer' ? 'سجّل كمحامي' : 'سجّل مكتبك'
+    return (
+      <div className="hm-act-cta">
+        <a className="hm-btn hm-btn-ink" href={'/signup?type=' + kind}>{label}</a>
+        <a className="hm-btn hm-btn-outline" href="/login">تسجيل الدخول</a>
+      </div>
+    )
+  }
+
   function renderCtas() {
     if (account === 'customer') {
       return (
@@ -418,6 +404,10 @@ export default function HomePage() {
           <p className="hm-eyebrow">منصة قانونية أردنية</p>
           <h1>كل ما يخص القانون،<br /><span>في مكان واحد.</span></h1>
           <p className="hm-lede">حمورابي يجمع العميل والمحامي ومكتب المحاماة على منصة واحدة: من أول سؤال، إلى الموعد، إلى إدارة القضية حتى صدور الحكم.</p>
+          <div className="hm-doors-head">
+            <h2>كيف يعمل حمورابي ليلبّي احتياجات الجميع؟</h2>
+            <p>اختر بابك وشاهد ما يقدّمه لك، أو تابع القصة كاملة.</p>
+          </div>
           <div className="hm-doors">
             <a className="hm-door" href="#client">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" /></svg>
@@ -437,13 +427,6 @@ export default function HomePage() {
               <span className="hm-door-v">أتابع عمل فريقي وأراجعه وأوظّف محامين جدد</span>
               <span className="hm-door-go">شاهد كيف ↓</span>
             </a>
-          </div>
-        </div>
-        <div className="hm-stats">
-          <div className="hm-wrap">
-            <div className="hm-stat"><CountUp value={lawyerCount} /><span>محامي موثوق</span></div>
-            <div className="hm-stat"><CountUp value={specialtyCount} /><span>اختصاص قانوني</span></div>
-            <div className="hm-stat"><CountUp value={cityCount} /><span>محافظة أردنية</span></div>
           </div>
         </div>
       </section>
@@ -484,6 +467,7 @@ export default function HomePage() {
                   <li><button type="button" className="hm-feat"><span className="hm-feat-t">دليل المحامين والحجز</span><span className="hm-feat-d">محامون موثوقون حسب الاختصاص والمدينة، وموعد حضوري أو عبر الفيديو</span><span className="hm-bar"><i></i></span></button></li>
                   <li><button type="button" className="hm-feat"><span className="hm-feat-t">استشارة سريعة ومقالات</span><span className="hm-feat-d">سؤال مكتوب وجواب من محامي، ومقالات قانونية يكتبها محامون</span><span className="hm-bar"><i></i></span></button></li>
                 </ul>
+                {renderActCta('customer')}
               </div>
               <div className="hm-act-stage">
                 <div className="hm-phone">
@@ -504,7 +488,7 @@ export default function HomePage() {
                       <div className="hm-panel">
                         <div className="hm-lawyer-card">
                           <span className="hm-avatar">س</span>
-                          <div><strong>أ. سارة الخطيب</strong><br /><span className="hm-quiet">حقوقي · 12 سنة خبرة · ★ 4.9</span></div>
+                          <div><strong>أ. سارة</strong><br /><span className="hm-quiet">حقوقي · 12 سنة خبرة · ★ 4.9</span></div>
                         </div>
                       </div>
                       <div className="hm-seg"><span>حضوري</span><span className="on">عبر الفيديو</span></div>
@@ -513,7 +497,7 @@ export default function HomePage() {
                       <div className="hm-toast"><span>✓</span><span>تم الحجز، ورابط الاجتماع جاهز في «مواعيدي»</span></div>
                     </div>
                     <div className="hm-screen">
-                      <div className="hm-app-bar">استشاراتي <small>أ. سارة الخطيب</small></div>
+                      <div className="hm-app-bar">استشاراتي <small>مكتب المحاماة</small></div>
                       <div className="hm-panel">
                         <div className="hm-row"><strong>هل يحق لي استرجاع مبلغ التأمين عند الخروج؟</strong></div>
                         <div className="hm-status-swap"><span className="hm-pill wine before">بانتظار الإجابة</span><span className="hm-pill olive after">تمت الإجابة</span></div>
@@ -523,7 +507,7 @@ export default function HomePage() {
                       <div className="hm-panel">
                         <span className="hm-quiet">مقالات قانونية</span>
                         <strong>حقوق المستأجر عند انتهاء عقد الإيجار</strong>
-                        <span className="hm-quiet">بقلم أ. سارة الخطيب · قراءة 4 دقائق</span>
+                        <span className="hm-quiet">بقلم محامية في المكتب · قراءة 4 دقائق</span>
                       </div>
                     </div>
                   </div>
@@ -542,6 +526,7 @@ export default function HomePage() {
                   <li><button type="button" className="hm-feat"><span className="hm-feat-t">الأجندة</span><span className="hm-feat-d">الجلسات ومواعيد العملاء والإجراءات المطلوبة في تقويم واحد</span><span className="hm-bar"><i></i></span></button></li>
                   <li><button type="button" className="hm-feat"><span className="hm-feat-t">الفواتير والمالية</span><span className="hm-feat-d">فواتير وتذكير عبر واتساب، ودخلك ومصاريفك وأرباحك الحقيقية</span><span className="hm-bar"><i></i></span></button></li>
                 </ul>
+                {renderActCta('lawyer')}
               </div>
               <div className="hm-act-stage">
                 <div className="hm-laptop">
@@ -551,7 +536,7 @@ export default function HomePage() {
                         <div className="hm-app-bar">ملفات القضايا <small className="hm-num">12 قضية نشطة</small></div>
                         <div className="hm-kanban">
                           <div className="hm-col"><h4>بداية</h4>
-                            <div className="hm-kcard hot"><strong className="hm-num">قضية 2471/2026</strong><span>إخلاء مأجور · ليلى ع.</span><span className="hm-pill gold hm-num">الجلسة القادمة 14/10</span></div>
+                            <div className="hm-kcard hot"><strong className="hm-num">قضية 2471/2026</strong><span>إخلاء مأجور · ليلى</span><span className="hm-pill gold hm-num">الجلسة القادمة 14/10</span></div>
                             <div className="hm-kcard ghost"><strong className="hm-num">قضية 1980/2026</strong><span>مطالبة مالية</span></div>
                           </div>
                           <div className="hm-col"><h4>استئناف</h4>
@@ -575,7 +560,7 @@ export default function HomePage() {
                           <div className="hm-agenda">
                             <strong>الأربعاء 14</strong>
                             <div className="hm-panel"><span className="hm-num"><strong>9:30</strong> جلسة</span><span className="hm-quiet">محكمة بداية عمّان · قضية 2471</span></div>
-                            <div className="hm-panel"><span className="hm-num"><strong>11:30</strong> موعد فيديو</span><span className="hm-quiet">ليلى ع. · رابط الاجتماع جاهز</span></div>
+                            <div className="hm-panel"><span className="hm-num"><strong>11:30</strong> موعد فيديو</span><span className="hm-quiet">ليلى · رابط الاجتماع جاهز</span></div>
                           </div>
                         </div>
                       </div>
@@ -588,9 +573,9 @@ export default function HomePage() {
                         </div>
                         <div className="hm-money-wrap">
                           <div className="hm-panel">
-                            <div className="hm-row"><strong>ليلى ع.</strong><span className="hm-num">250 د.أ</span></div>
+                            <div className="hm-row"><strong>ليلى</strong><span className="hm-num">250 د.أ</span></div>
                             <div className="hm-status-swap"><span className="hm-pill wine before">غير مدفوعة</span><span className="hm-pill olive after">مدفوعة</span></div>
-                            <div className="hm-wa">مكتب المحامية سارة الخطيب: تذكير بفاتورة بقيمة 250 د.أ</div>
+                            <div className="hm-wa">مكتب المحامية سارة: تذكير بفاتورة بقيمة 250 د.أ</div>
                           </div>
                           <div className="hm-bars" aria-hidden="true"><i style={{ height: '38%' }}></i><i style={{ height: '52%' }}></i><i style={{ height: '45%' }}></i><i style={{ height: '66%' }}></i><i style={{ height: '58%' }}></i><i style={{ height: '84%' }}></i></div>
                         </div>
@@ -606,13 +591,14 @@ export default function HomePage() {
             <article className="hm-act" id="firm">
               <div className="hm-act-text">
                 <p className="hm-act-kicker"><b>٣</b>المكتب</p>
-                <h3>مكتب الخطيب وشركاؤه يتابع</h3>
-                <p className="hm-act-lede">المكتب يرى قضايا فريقه ومواعيدهم، ويراجع الإجابات قبل وصولها للعميل، ويجد متدربين جدداً عند الحاجة.</p>
+                <h3>المكتب يتابع ملف ليلى</h3>
+                <p className="hm-act-lede">سارة تعمل ضمن مكتب. المكتب يرى قضية ليلى بين قضايا فريقه، ويراجع الإجابة على سؤالها قبل أن تصلها، ويتأكد أن الرد وصلها في الوقت المحدد.</p>
                 <ul className="hm-features">
-                  <li><button type="button" className="hm-feat on"><span className="hm-feat-t">عمل الفريق في مكان واحد</span><span className="hm-feat-d">قضايا المحامين ومواعيدهم وفواتيرهم، مع فلتر لكل محامي</span><span className="hm-bar"><i></i></span></button></li>
-                  <li><button type="button" className="hm-feat"><span className="hm-feat-t">مراجعة المحامي الأقدم</span><span className="hm-feat-d">الإجابات تمر على محامي أقدم تختاره قبل أن تصل للعميل</span><span className="hm-bar"><i></i></span></button></li>
-                  <li><button type="button" className="hm-feat"><span className="hm-feat-t">التوظيف والتدريب</span><span className="hm-feat-d">انشر فرص عمل أو تدريب واستقبل طلبات المحامين والمتدربين</span><span className="hm-bar"><i></i></span></button></li>
+                  <li><button type="button" className="hm-feat on"><span className="hm-feat-t">عمل الفريق في مكان واحد</span><span className="hm-feat-d">قضية ليلى بين قضايا الفريق ومواعيده وفواتيره، مع فلتر لكل محامي</span><span className="hm-bar"><i></i></span></button></li>
+                  <li><button type="button" className="hm-feat"><span className="hm-feat-t">مراجعة المحامي الأقدم</span><span className="hm-feat-d">إجابة سؤال ليلى تمر على محامي أقدم قبل أن تصلها</span><span className="hm-bar"><i></i></span></button></li>
+                  <li><button type="button" className="hm-feat"><span className="hm-feat-t">أوقات الاستجابة</span><span className="hm-feat-d">وقت محدد للرد على كل عميل، وتنبيه لك وللمحامي عند التأخير</span><span className="hm-bar"><i></i></span></button></li>
                 </ul>
+                {renderActCta('firm')}
               </div>
               <div className="hm-act-stage">
                 <div className="hm-browser">
@@ -621,41 +607,85 @@ export default function HomePage() {
                     <div className="hm-screen on">
                       <div className="hm-app-bar">فريق المكتب <small>4 محامين</small></div>
                       <div className="hm-roster"><span className="hm-avatar">خ</span><span className="hm-avatar sel">س</span><span className="hm-avatar">ر</span><span className="hm-avatar">م</span></div>
-                      <div className="hm-select"><span className="hm-status-swap hm-swap-name"><span className="before">جميع المحامين</span><span className="after">سارة الخطيب</span></span><span>▾</span></div>
+                      <div className="hm-select"><span className="hm-status-swap hm-swap-name"><span className="before">جميع المحامين</span><span className="after">سارة</span></span><span>▾</span></div>
                       <div className="hm-table">
                         <div className="hm-tr head"><span>المحامي</span><span>القضية</span><span>الجلسة</span></div>
-                        <div className="hm-tr"><span>سارة</span><span>2471 · إخلاء مأجور</span><span className="hm-num">14/10</span></div>
+                        <div className="hm-tr hot"><span>سارة</span><span>2471 · إخلاء مأجور (ليلى)</span><span className="hm-num">14/10</span></div>
                         <div className="hm-tr other"><span>خالد</span><span>1650 · شيكات</span><span className="hm-num">16/10</span></div>
                         <div className="hm-tr"><span>سارة</span><span>1980 · مطالبة مالية</span><span className="hm-num">21/10</span></div>
                         <div className="hm-tr other"><span>ريم</span><span>2102 · نفقة</span><span className="hm-num">22/10</span></div>
                       </div>
                     </div>
                     <div className="hm-screen">
-                      <div className="hm-app-bar">إجابات بانتظار المراجعة <small>المهلة: 24 ساعة</small></div>
+                      <div className="hm-app-bar">إجابات بانتظار المراجعة <small>وقت المراجعة: 6 ساعات</small></div>
                       <div className="hm-panel">
-                        <div className="hm-row"><strong>استشارة: فسخ عقد إيجار تجاري</strong><span className="hm-pill gold">بانتظار المراجعة</span></div>
-                        <span className="hm-quiet">إجابة المحامية ريم</span>
+                        <div className="hm-row"><strong>سؤال ليلى: استرجاع مبلغ التأمين</strong><span className="hm-pill gold">بانتظار المراجعة</span></div>
+                        <span className="hm-quiet">إجابة المحامية ريم، قبل أن تصل لليلى</span>
                         <div className="hm-blur-lines clear"><span className="hm-skel"></span><span className="hm-skel" style={{ width: '90%' }}></span><span className="hm-skel" style={{ width: '70%' }}></span></div>
-                        <div className="hm-assign"><span className="hm-quiet">إسناد المراجعة إلى:</span><span className="hm-chipbtn sel">خالد الحسن (أقدم)</span><span className="hm-chipbtn">سارة الخطيب</span></div>
+                        <div className="hm-assign"><span className="hm-quiet">إسناد المراجعة إلى:</span><span className="hm-chipbtn sel">خالد (أقدم)</span><span className="hm-chipbtn">سارة (أقدم)</span></div>
                       </div>
-                      <span className="hm-stamp">تم الاعتماد والإرسال للعميل ✓</span>
+                      <span className="hm-stamp">اعتُمدت وأُرسلت لليلى ✓</span>
                     </div>
                     <div className="hm-screen">
-                      <div className="hm-app-bar">التوظيف والتدريب <small>منشورات المكتب</small></div>
+                      <div className="hm-app-bar">أوقات الاستجابة (SLA) <small>الرد خلال 24 ساعة</small></div>
                       <div className="hm-panel">
-                        <div className="hm-row"><strong>فرصة تدريب · قضايا حقوقية</strong><span className="hm-pill ink">تدريب</span></div>
-                        <span className="hm-quiet">عمّان · دوام كامل · نُشرت اليوم</span>
-                        <div className="hm-row"><span className="hm-applicants"><span className="hm-avatar">ن</span><span className="hm-avatar">ع</span><span className="hm-avatar">ل</span></span><strong className="hm-num">المتقدمون (3)</strong></div>
+                        <div className="hm-row"><strong>سؤال ليلى</strong><span className="hm-pill olive">أُرسل الرد ✓</span></div>
+                        <div className="hm-sla"><i style={{ width: '38%' }}></i></div>
+                        <span className="hm-quiet hm-num">رُدّ عليه خلال 9 ساعات من أصل 24</span>
                       </div>
                       <div className="hm-panel">
-                        <div className="hm-row"><strong>محامي شركات</strong><span className="hm-pill gold">فرصة عمل</span></div>
-                        <span className="hm-quiet">عمّان · 5 سنوات خبرة فأكثر</span>
+                        <div className="hm-row"><strong>سؤال عميل آخر</strong><span className="hm-pill gold hm-num">متبقٍ 3 ساعات</span></div>
+                        <div className="hm-sla warn"><i style={{ width: '88%' }}></i></div>
+                      </div>
+                      <div className="hm-panel hm-late">
+                        <div className="hm-row"><strong>سؤال متأخر</strong><span className="hm-pill wine">تجاوز الوقت المحدد</span></div>
+                        <span className="hm-quiet">تنبيه للمحامي المسؤول وللمكتب</span>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="hm-more" id="services">
+        <div className="hm-wrap">
+          <header className="hm-story-head">
+            <p className="hm-eyebrow">أكثر من قصة ليلى</p>
+            <h2>خدمات حمورابي لكل واحد منكم</h2>
+            <p className="hm-sub">اختر من أنت لترى ما يناسبك.</p>
+          </header>
+          <div className="hm-chips" role="tablist" aria-label="لمن الخدمة">
+            {AUDIENCES.map(function (a) {
+              const count = a.key === 'all' ? SERVICES.length : SERVICES.filter(function (x) { return x.for.indexOf(a.key as Audience) !== -1 }).length
+              return (
+                <button key={a.key} type="button" role="tab" aria-selected={audience === a.key} className={audience === a.key ? 'on' : ''} onClick={function () { setAudience(a.key) }}>
+                  {a.label} <span className="hm-num">{count}</span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="hm-services">
+            {SERVICES.map(function (x) {
+              const shown = audience === 'all' || x.for.indexOf(audience) !== -1
+              return (
+                <article key={x.title} className={'hm-service' + (shown ? '' : ' off')} aria-hidden={!shown}>
+                  <span className="hm-service-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={x.icon} /></svg>
+                  </span>
+                  <h3>{x.title}</h3>
+                  <p>{x.text}</p>
+                  <span className="hm-tags">
+                    {x.for.map(function (f) {
+                      const label = f === 'customer' ? 'عميل' : f === 'lawyer' ? 'محامي' : f === 'firm' ? 'مكتب' : 'متدرب'
+                      return <i key={f}>{label}</i>
+                    })}
+                  </span>
+                </article>
+              )
+            })}
           </div>
         </div>
       </section>

@@ -76,7 +76,7 @@ export default function MyConsultationsPage() {
 
       const firmCheck = await supabase.from('firms').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
       if (firmCheck.data) {
-        router.push('/firm-consultations')
+        router.push('/lawyer-history')
         return
       }
 

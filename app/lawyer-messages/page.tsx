@@ -620,7 +620,7 @@ export default function LawyerMessagesPage() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 md:px-6 -mt-6 mb-10 flex-1 w-full relative">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 -mt-6 mb-10 flex-1 w-full relative z-20">
         <div className="bg-white rounded-2xl shadow-xl border border-[#D8D2C4] overflow-hidden flex" style={{ height: 'min(72vh, 680px)', minHeight: '520px' }}>
 
           <div className={(hasOpenThread ? 'hidden md:flex' : 'flex') + ' flex-col w-full md:w-[360px] md:border-l border-[#E7E1D3] flex-shrink-0'}>

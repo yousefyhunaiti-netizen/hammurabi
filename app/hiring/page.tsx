@@ -519,7 +519,7 @@ export default function HiringPage() {
             </div>
           </div>
           <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">التوظيف والتدريب</h1>
-          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">فرص عمل للمحامين وفرص تدريب للمحامين المتدربين، ينشرها المحامون والمكاتب</p>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">فرص عمل للمحامين وفرص تدريب للمحامين المتدربين</p>
         </div>
       </div>
 

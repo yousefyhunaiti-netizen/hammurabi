@@ -89,7 +89,7 @@ export default function MyAppointmentsPage() {
 
       const firmCheck = await supabase.from('firms').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
       if (firmCheck.data) {
-        router.push('/firm-appointments')
+        router.push('/lawyer-history')
         return
       }
 

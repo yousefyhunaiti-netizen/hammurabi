@@ -9,6 +9,7 @@ import Footer from '../components/Footer'
 import WorkspaceSwitch from '../components/WorkspaceSwitch'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import DateFields from '../components/DateFields'
 
 type LegalCase = {
   id: number
@@ -74,7 +75,18 @@ type WakalahDoc = {
   lawyer_file_url: string | null
   customer_file_url: string | null
   status: string
+  client_name: string | null
+  wakalah_type: string | null
+  certified_by: string | null
+  certified_date: string | null
+  expiry_date: string | null
+  issued_abroad: boolean | null
+  mofa_date: string | null
+  notary_date: string | null
 }
+
+const wakalahTypes = ['عامة عدلية', 'خاصة عدلية', 'وكالة محامي']
+const WAKALAH_COLUMNS = 'id, case_id, lawyer_file_url, customer_file_url, status, client_name, wakalah_type, certified_by, certified_date, expiry_date, issued_abroad, mofa_date, notary_date'
 
 type Specialty = {
   id: number
@@ -165,6 +177,16 @@ export default function LawyerCasesPage() {
   const [savingInvoice, setSavingInvoice] = useState(false)
 
   const [uploadingWakalah, setUploadingWakalah] = useState(false)
+  const [showWakalahForm, setShowWakalahForm] = useState(false)
+  const [wkType, setWkType] = useState(wakalahTypes[0])
+  const [wkCertifiedBy, setWkCertifiedBy] = useState('')
+  const [wkCertifiedDate, setWkCertifiedDate] = useState('')
+  const [wkExpiryDate, setWkExpiryDate] = useState('')
+  const [wkAbroad, setWkAbroad] = useState(false)
+  const [wkMofaDate, setWkMofaDate] = useState('')
+  const [wkNotaryDate, setWkNotaryDate] = useState('')
+  const [wkFile, setWkFile] = useState<File | null>(null)
+  const [wkError, setWkError] = useState('')
 
   const supabase = createClient()
   const router = useRouter()
@@ -430,11 +452,11 @@ export default function LawyerCasesPage() {
     const invoicesResult = await supabase.from('invoices').select('*').eq('case_id', c.id)
     setCaseInvoices(invoicesResult.data || [])
 
-    const wakalahResult = await supabase.from('wakalah_documents').select('id, case_id, lawyer_file_url, customer_file_url, status').eq('case_id', c.id)
+    const wakalahResult = await supabase.from('wakalah_documents').select('id, case_id, lawyer_file_url, customer_file_url, status, client_name, wakalah_type, certified_by, certified_date, expiry_date, issued_abroad, mofa_date, notary_date').eq('case_id', c.id)
     setCaseWakalah(wakalahResult.data || [])
 
     if (lawyerId) {
-      const unlinkedResult = await supabase.from('wakalah_documents').select('id, case_id, lawyer_file_url, customer_file_url, status').eq('lawyer_id', lawyerId).is('case_id', null)
+      const unlinkedResult = await supabase.from('wakalah_documents').select('id, case_id, lawyer_file_url, customer_file_url, status, client_name, wakalah_type, certified_by, certified_date, expiry_date, issued_abroad, mofa_date, notary_date').eq('lawyer_id', lawyerId).is('case_id', null).neq('status', 'revoked')
       setUnlinkedWakalah(unlinkedResult.data || [])
     }
   }
@@ -574,28 +596,66 @@ export default function LawyerCasesPage() {
     if (selectedCase) await loadCaseDetail(selectedCase)
   }
 
-  async function handleUploadNewWakalah(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!e.target.files || !e.target.files[0] || !selectedCase || !lawyerId) return
+  function resetWakalahForm() {
+    setWkType(wakalahTypes[0])
+    setWkCertifiedBy('')
+    setWkCertifiedDate('')
+    setWkExpiryDate('')
+    setWkAbroad(false)
+    setWkMofaDate('')
+    setWkNotaryDate('')
+    setWkFile(null)
+    setWkError('')
+  }
+
+  // A new wakalah for this case, with the same details as the «الوكالات» page.
+  async function handleSaveCaseWakalah() {
+    if (!selectedCase || !lawyerId) return
+    setWkError('')
     setUploadingWakalah(true)
 
-    const file = e.target.files[0]
+    let storedPath: string | null = null
+    if (wkFile) {
+      storedPath = await uploadOwnFile(supabase, 'wakalah-files', wkFile)
+      if (!storedPath) {
+        setUploadingWakalah(false)
+        setWkError('تعذر رفع الملف، حاول مرة أخرى')
+        return
+      }
+    }
 
-    const storedPath = await uploadOwnFile(supabase, 'wakalah-files', file)
-    if (!storedPath) {
-      setUploadingWakalah(false)
-      alert('تعذر رفع الملف، حاول مرة أخرى')
+    const insertResult = await supabase.from('wakalah_documents').insert({
+      lawyer_id: lawyerId,
+      case_id: selectedCase.id,
+      client_name: selectedCase.client_name || null,
+      status: 'pending_customer',
+      wakalah_type: wkType,
+      certified_by: wkCertifiedBy.trim() || null,
+      certified_date: wkCertifiedDate || null,
+      expiry_date: wkExpiryDate || null,
+      issued_abroad: wkAbroad,
+      mofa_date: wkAbroad ? (wkMofaDate || null) : null,
+      notary_date: wkAbroad ? (wkNotaryDate || null) : null,
+      lawyer_file_url: storedPath,
+    })
+
+    setUploadingWakalah(false)
+
+    if (insertResult.error) {
+      setWkError('تعذر حفظ الوكالة، حاول مرة أخرى')
       return
     }
 
-    await supabase.from('wakalah_documents').insert({
-      lawyer_id: lawyerId,
-      case_id: selectedCase.id,
-      lawyer_file_url: storedPath,
-      status: 'pending_customer',
-    })
-
+    resetWakalahForm()
+    setShowWakalahForm(false)
     await loadCaseDetail(selectedCase)
-    setUploadingWakalah(false)
+  }
+
+  function wakalahExpired(w: WakalahDoc) {
+    if (w.status === 'revoked' || !w.expiry_date) return false
+    const now = new Date()
+    const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+    return w.expiry_date < today
   }
 
   async function handleLinkWakalah(wakalahId: number) {
@@ -775,8 +835,8 @@ export default function LawyerCasesPage() {
           <div className="space-y-2 mt-2">
             <textarea value={editOutcome} onChange={function (e) { setEditOutcome(e.target.value) }} placeholder="نتيجة الجلسة" rows={2} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]" />
             <textarea value={editNextProcedure} onChange={function (e) { setEditNextProcedure(e.target.value) }} placeholder="الإجراء المطلوب بعد الجلسة" rows={2} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]" />
-            <div className="grid grid-cols-2 gap-2">
-              <input type="date" value={editProcedureDate} onChange={function (e) { setEditProcedureDate(e.target.value) }} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]" />
+            <div className="grid grid-cols-1 gap-2">
+              <DateFields value={editProcedureDate} onChange={setEditProcedureDate} tone="white" />
               <input type="time" value={editProcedureTime} onChange={function (e) { setEditProcedureTime(e.target.value) }} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]" />
             </div>
             <button onClick={saveClick} className="w-full py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-xs">حفظ</button>
@@ -843,7 +903,7 @@ export default function LawyerCasesPage() {
         <input type="number" value={formCaseValue} onChange={function (e) { setFormCaseValue(e.target.value) }} placeholder="قيمة الدعوى" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
         <div>
           <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">تاريخ رفع الدعوى (يوم تقديم الدعوى للمحكمة)</label>
-          <input type="date" value={formFilingDate} onChange={function (e) { setFormFilingDate(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+          <DateFields value={formFilingDate} onChange={setFormFilingDate} tone="paper" />
         </div>
         <input type="text" value={formCourtName} onChange={function (e) { setFormCourtName(e.target.value) }} placeholder="اسم المحكمة" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
         <select value={formCourtInstance} onChange={function (e) { setFormCourtInstance(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
@@ -855,7 +915,7 @@ export default function LawyerCasesPage() {
         <div>
           <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">موعد حرج (اختياري)</label>
           <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-1">لتتبع مواعيد تقادم قانونية أو مواعيد نهائية غير مرتبطة بجلسة محددة بعد</p>
-          <input type="date" value={formDeadlineDate} onChange={function (e) { setFormDeadlineDate(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+          <DateFields value={formDeadlineDate} onChange={setFormDeadlineDate} tone="paper" />
         </div>
         <textarea value={formNotes} onChange={function (e) { setFormNotes(e.target.value) }} placeholder="ملاحظات" rows={2} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
       </div>
@@ -959,9 +1019,12 @@ export default function LawyerCasesPage() {
           {caseInvoices.map(renderInvoiceRow)}
 
           {!isFirm && (
-          <div className="flex gap-2 mt-3">
+          <div className="flex flex-wrap gap-2 mt-3 items-start">
             <input type="number" value={newInvoiceAmount} onChange={invoiceAmountChange} placeholder="مبلغ فاتورة جديدة" className="flex-1 px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            <input type="date" value={newInvoiceDueDate} onChange={function (e) { setNewInvoiceDueDate(e.target.value) }} className="px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            <div className="w-full sm:w-56">
+              <p className="font-['Tajawal'] text-[11px] text-[#4A473F] mb-1">تاريخ الاستحقاق</p>
+              <DateFields value={newInvoiceDueDate} onChange={setNewInvoiceDueDate} tone="paper" />
+            </div>
             <button onClick={handleAddInvoice} disabled={savingInvoice} className="px-4 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm">إضافة فاتورة</button>
           </div>
           )}
@@ -979,8 +1042,8 @@ export default function LawyerCasesPage() {
 
           {showAddHearing && !isFirm && (
             <div className="bg-[#F3EEE4] rounded-md p-4 mb-4">
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <input type="date" value={hearingDate} onChange={function (e) { setHearingDate(e.target.value) }} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 mb-3 items-start">
+                <DateFields value={hearingDate} onChange={setHearingDate} tone="white" />
                 <input type="time" value={hearingTime} onChange={function (e) { setHearingTime(e.target.value) }} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
               </div>
               <button onClick={handleAddHearing} disabled={savingHearing} className="w-full py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm">
@@ -1047,13 +1110,34 @@ export default function LawyerCasesPage() {
         </div>
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
-          <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">الوكالة</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">الوكالة</h3>
+            <a href="/wakalah" className="font-['Tajawal'] text-xs text-[#AD8A4E] hover:underline">كل الوكالات ←</a>
+          </div>
 
           {caseWakalah.map(function (w) {
+            const expired = wakalahExpired(w)
+            const revoked = w.status === 'revoked'
             return (
-              <div key={w.id} className="bg-[#F3EEE4] rounded-md p-3 mb-2">
-                <p className="font-['Tajawal'] text-xs text-[#4A473F]">الحالة: {w.status === 'completed' ? 'مكتملة' : 'بانتظار توقيع العميل'}</p>
-                {w.lawyer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', w.lawyer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#AD8A4E] underline block">عرض ملف الوكالة</button>}
+              <div key={w.id} className={"rounded-md p-3 mb-2 border " + (expired || revoked ? 'bg-[#F3EEE4] border-[#7A2E2E]/40' : 'bg-[#F3EEE4] border-transparent')}>
+                <div className="flex justify-between items-start gap-2 mb-1">
+                  <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{w.client_name || c.client_name}</p>
+                  <span className={"px-2 py-0.5 rounded-full font-['Tajawal'] text-[11px] whitespace-nowrap " + (revoked ? 'bg-[#7A2E2E] text-white' : expired ? 'bg-white text-[#7A2E2E] border border-[#7A2E2E]' : 'bg-[#D9E5DC] text-[#2F4538]')}>
+                    {revoked ? 'ملغاة' : expired ? 'منتهية' : (w.wakalah_type || 'وكالة')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1 font-['Tajawal'] text-xs text-[#4A473F]">
+                  {w.certified_date && <p>تاريخ التصديق: {formatDateDisplay(w.certified_date)}</p>}
+                  {w.certified_by && <p>جهة التصديق: {w.certified_by}</p>}
+                  {w.expiry_date && <p className={expired ? 'text-[#7A2E2E] font-bold' : ''}>تاريخ الانتهاء: {formatDateDisplay(w.expiry_date)}</p>}
+                  {w.issued_abroad && (
+                    <p className="col-span-2">صادرة من الخارج — وزارة الخارجية: {w.mofa_date ? formatDateDisplay(w.mofa_date) : 'لم تُصدّق بعد'} — كاتب العدل: {w.notary_date ? formatDateDisplay(w.notary_date) : 'لم تُصدّق بعد'}</p>
+                  )}
+                </div>
+                <div className="flex gap-3 mt-1">
+                  {w.lawyer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', w.lawyer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#AD8A4E] underline">عرض ملف الوكالة</button>}
+                  {w.customer_file_url && <button type="button" onClick={function () { openPrivateFile(supabase, 'wakalah-files', w.customer_file_url as string) }} className="font-['Tajawal'] text-xs text-[#2F4538] underline">النسخة الموقّعة من العميل</button>}
+                </div>
               </div>
             )
           })}
@@ -1062,26 +1146,70 @@ export default function LawyerCasesPage() {
             <p className="font-['Tajawal'] text-sm text-[#4A473F]">لا توجد وكالة مرتبطة بهذه القضية</p>
           )}
 
-          {!isFirm && (
-          <div className="mb-3">
-            <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رفع وكالة جديدة لهذه القضية</label>
-            <label className="cursor-pointer inline-block px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:bg-[#D8D2C4] transition">
-              📎 اختر ملف الوكالة
-              <input type="file" onChange={handleUploadNewWakalah} disabled={uploadingWakalah} className="hidden" />
-            </label>
-          </div>
+          {!isFirm && !showWakalahForm && (
+            <button onClick={function () { resetWakalahForm(); setShowWakalahForm(true) }} className="mt-1 mb-3 px-4 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-xs">
+              + إضافة وكالة لهذه القضية
+            </button>
+          )}
+
+          {!isFirm && showWakalahForm && (
+            <div className="bg-[#F3EEE4] rounded-md p-4 mb-3 space-y-3">
+              <p className="font-['Tajawal'] text-xs text-[#4A473F]">الموكل: <strong className="text-[#1B1A17]">{c.client_name}</strong></p>
+              <div>
+                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نوع الوكالة</label>
+                <div className="flex gap-2">
+                  {wakalahTypes.map(function (t) {
+                    return (
+                      <button key={t} type="button" onClick={function () { setWkType(t) }} className={"flex-1 py-2 rounded-md font-['Tajawal'] text-xs " + (wkType === t ? 'bg-[#1B1A17] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}>{t}</button>
+                    )
+                  })}
+                </div>
+              </div>
+              <input type="text" value={wkCertifiedBy} onChange={function (e) { setWkCertifiedBy(e.target.value) }} placeholder="جهة التصديق (كاتب عدل / المحامي نفسه)" className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <div>
+                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">تاريخ التصديق</label>
+                <DateFields value={wkCertifiedDate} onChange={setWkCertifiedDate} tone="white" />
+              </div>
+              <div>
+                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">تاريخ انتهاء الوكالة (إن وُجد)</label>
+                <DateFields value={wkExpiryDate} onChange={setWkExpiryDate} tone="white" />
+              </div>
+              <label className="flex items-center gap-2 font-['Tajawal'] text-xs text-[#4A473F]">
+                <input type="checkbox" checked={wkAbroad} onChange={function (e) { setWkAbroad(e.target.checked) }} />
+                صادرة من خارج الأردن
+              </label>
+              {wkAbroad && (
+                <div className="space-y-3 bg-white rounded-md p-3">
+                  <div>
+                    <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">1. تاريخ تصديق وزارة الخارجية</label>
+                    <DateFields value={wkMofaDate} onChange={setWkMofaDate} />
+                  </div>
+                  <div>
+                    <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">2. تاريخ تصديق كاتب العدل</label>
+                    <DateFields value={wkNotaryDate} onChange={setWkNotaryDate} />
+                  </div>
+                </div>
+              )}
+              <label className="cursor-pointer inline-block px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:bg-[#D8D2C4] transition">
+                📎 {wkFile ? wkFile.name : 'رفع ملف الوكالة (اختياري)'}
+                <input type="file" onChange={function (e) { setWkFile(e.target.files ? e.target.files[0] : null) }} className="hidden" />
+              </label>
+              {wkError && <p className="font-['Tajawal'] text-sm text-[#7A2E2E]">{wkError}</p>}
+              <div className="flex gap-2">
+                <button onClick={function () { setShowWakalahForm(false) }} className="flex-1 py-2 bg-white text-[#4A473F] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm">إلغاء</button>
+                <button onClick={handleSaveCaseWakalah} disabled={uploadingWakalah} className="flex-1 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm disabled:opacity-60">{uploadingWakalah ? 'جاري الحفظ...' : 'حفظ الوكالة'}</button>
+              </div>
+            </div>
           )}
 
           {!isFirm && unlinkedWakalah.length > 0 && (
             <div>
-              <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">أو اربط وكالة سابقة بهذه القضية:</p>
+              <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">أو اربط وكالة مسجّلة سابقاً بهذه القضية:</p>
               {unlinkedWakalah.map(function (w) {
-                function linkClick() {
-                  handleLinkWakalah(w.id)
-                }
                 return (
-                  <button key={w.id} onClick={linkClick} className="block font-['Tajawal'] text-xs text-[#1B1A17] bg-[#F3EEE4] rounded-md p-2 mb-1 w-full text-right">
-                    وكالة #{w.id} — ربط بهذه القضية
+                  <button key={w.id} onClick={function () { handleLinkWakalah(w.id) }} className="flex justify-between items-center font-['Tajawal'] text-xs text-[#1B1A17] bg-[#F3EEE4] hover:bg-[#EDE6D8] rounded-md p-2 mb-1 w-full text-right transition">
+                    <span>{w.client_name || 'وكالة'}{w.wakalah_type ? ' — ' + w.wakalah_type : ''}{w.certified_date ? ' — ' + formatDateDisplay(w.certified_date) : ''}</span>
+                    <span className="text-[#AD8A4E]">ربط ←</span>
                   </button>
                 )
               })}

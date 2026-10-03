@@ -64,7 +64,7 @@ export default function LoginPage() {
         <img
           src="/scale.png"
           alt=""
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] opacity-[0.07] pointer-events-none object-contain"
+          className="hidden md:block absolute left-10 bottom-10 w-48 h-48 lg:w-56 lg:h-56 opacity-25 pointer-events-none object-contain z-[1] hm-float"
         />
 
         <div className="relative z-10 max-w-md mx-auto md:mx-0">

@@ -8,6 +8,7 @@ import Footer from '../components/Footer'
 import WorkspaceSwitch from '../components/WorkspaceSwitch'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import DateFields from '../components/DateFields'
 
 type PersonalEvent = {
   id: number
@@ -661,8 +662,8 @@ export default function LawyerCalendarPage() {
             <h2 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-3">إضافة موعد شخصي</h2>
             <div className="space-y-3">
               <input type="text" value={title} onChange={function (e) { setTitle(e.target.value) }} placeholder="العنوان" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-              <div className="grid grid-cols-2 gap-3">
-                <input type="date" value={eventDate} onChange={function (e) { setEventDate(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
+                <DateFields value={eventDate} onChange={setEventDate} tone="paper" />
                 <input type="time" value={timeSlot} onChange={function (e) { setTimeSlot(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
               </div>
               <textarea value={notes} onChange={function (e) { setNotes(e.target.value) }} rows={2} placeholder="ملاحظات" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />

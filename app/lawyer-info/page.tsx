@@ -151,6 +151,24 @@ export default function LawyerInfoPage() {
     await loadLawyerData()
   }
 
+  // Leaving the firm: the firm stops seeing this lawyer's work, and senior status ends.
+  const [confirmLeaveFirm, setConfirmLeaveFirm] = useState(false)
+  const [leaveError, setLeaveError] = useState('')
+
+  async function handleLeaveFirm() {
+    if (!lawyer) return
+    setLeaveError('')
+    setInviteLoading(true)
+    const result = await supabase.from('lawyers').update({ firm_id: null }).eq('id', lawyer.id).select('firm_id')
+    setInviteLoading(false)
+    if (result.error || !result.data || result.data.length === 0 || result.data[0].firm_id !== null) {
+      setLeaveError('تعذر مغادرة المكتب، حاول مرة أخرى')
+      return
+    }
+    setConfirmLeaveFirm(false)
+    await loadLawyerData()
+  }
+
   // Finishing training: the account goes back to review so the team can check
   // the new bar status before it appears in the lawyer directory.
   const [confirmEndTraining, setConfirmEndTraining] = useState(false)
@@ -319,7 +337,24 @@ export default function LawyerInfoPage() {
                 </div>
               )}
               {lawyer.firm_id && firmName && (
-                <p className="font-['Tajawal'] text-sm text-[#4A473F] mt-1">أنت جزء من مكتب <strong>{firmName}</strong></p>
+                <p className="font-['Tajawal'] text-sm text-[#4A473F] mt-1">
+                  أنت جزء من مكتب <strong>{firmName}</strong>
+                  {!confirmLeaveFirm && (
+                    <button onClick={function () { setConfirmLeaveFirm(true) }} className="mr-2 text-xs text-[#7A2E2E] underline">مغادرة المكتب</button>
+                  )}
+                </p>
+              )}
+              {lawyer.firm_id && confirmLeaveFirm && (
+                <div className="mt-2 bg-[#F3EEE4] border border-[#7A2E2E]/30 rounded-md p-3">
+                  <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2 leading-relaxed">
+                    بعد المغادرة لن يرى المكتب قضاياك ومواعيدك وفواتيرك، ولن يظهر اسمه مع اسمك، وتنتهي صفتك كمحامي أقدم فيه. للعودة يحتاج المكتب إلى دعوتك من جديد.
+                  </p>
+                  {leaveError && <p className="font-['Tajawal'] text-xs text-[#7A2E2E] mb-2">{leaveError}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={handleLeaveFirm} disabled={inviteLoading} className="px-3 py-1.5 bg-[#7A2E2E] text-white rounded-md font-['Tajawal'] text-xs disabled:opacity-60">تأكيد المغادرة</button>
+                    <button onClick={function () { setConfirmLeaveFirm(false); setLeaveError('') }} className="px-3 py-1.5 bg-white text-[#4A473F] rounded-md font-['Tajawal'] text-xs">إلغاء</button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

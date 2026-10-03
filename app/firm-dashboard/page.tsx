@@ -312,7 +312,7 @@ export default function FirmDashboardPage() {
     setDeadlineSaving(true)
     const result = await supabase.from('firms').update({ answer_hours: Math.round(a), review_hours: Math.round(r) }).eq('id', firm.id)
     setDeadlineSaving(false)
-    setDeadlineMessage(result.error ? 'تعذر الحفظ، حاول مرة أخرى' : 'تم حفظ المهل')
+    setDeadlineMessage(result.error ? 'تعذر الحفظ، حاول مرة أخرى' : 'تم حفظ أوقات الاستجابة')
   }
 
   // Choose which senior reviews an answer before it reaches the customer.
@@ -330,9 +330,9 @@ export default function FirmDashboardPage() {
   function reviewDueLabel(c: Consultation) {
     if (!c.review_due_at) return null
     const ms = new Date(c.review_due_at).getTime() - Date.now()
-    if (ms < 0) return { overdue: true, label: 'تجاوزت مهلة المراجعة' }
+    if (ms < 0) return { overdue: true, label: 'تجاوزت وقت المراجعة المحدد' }
     const hours = Math.ceil(ms / 3600000)
-    return { overdue: false, label: 'مهلة المراجعة: ' + (hours <= 1 ? 'أقل من ساعة' : hours + ' ساعة متبقية') }
+    return { overdue: false, label: 'وقت المراجعة: ' + (hours <= 1 ? 'أقل من ساعة' : hours + ' ساعة متبقية') }
   }
 
   function getSpecialtyName(specialtyId: number) {
@@ -671,20 +671,20 @@ export default function FirmDashboardPage() {
         )}
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
-          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-1">مهل الاستشارات</h2>
-          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">تُطبّق تلقائياً على كل استشارة جديدة، ويمكنك تعديل مهلة أي استشارة بمفردها من «المواعيد والاستشارات». ما يتجاوز المهلة يظهر باللون الأحمر لك وللمسؤول عنه.</p>
+          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-1">أوقات الاستجابة (SLA)</h2>
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">تُطبّق تلقائياً على كل استشارة جديدة، ويمكنك تعديل الوقت لأي استشارة بمفردها من «المواعيد والاستشارات». ما يتجاوز الوقت المحدد يظهر باللون الأحمر لك وللمسؤول عنه.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <label className="block">
-              <span className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">الإجابة خلال (ساعة)</span>
+              <span className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">وقت الاستجابة للعميل (بالساعات)</span>
               <input type="number" min="1" max="720" value={answerHours} onChange={function (e) { setAnswerHours(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
             </label>
             <label className="block">
-              <span className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">المراجعة خلال (ساعة)</span>
+              <span className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">وقت مراجعة المحامي الأقدم (بالساعات)</span>
               <input type="number" min="1" max="720" value={reviewHours} onChange={function (e) { setReviewHours(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
             </label>
           </div>
           <button onClick={handleSaveDeadlines} disabled={deadlineSaving} className="px-5 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition disabled:opacity-60">
-            {deadlineSaving ? 'جاري الحفظ...' : 'حفظ المهل'}
+            {deadlineSaving ? 'جاري الحفظ...' : 'حفظ أوقات الاستجابة'}
           </button>
           {deadlineMessage && <p className="font-['Tajawal'] text-sm text-[#2F4538] mt-2">{deadlineMessage}</p>}
         </div>

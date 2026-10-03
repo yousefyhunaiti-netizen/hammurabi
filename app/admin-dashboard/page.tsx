@@ -807,7 +807,10 @@ export default function AdminDashboardPage() {
                 <button onClick={function () { setDiscountType('percentage') }} className={"flex-1 py-2 rounded-md font-['Tajawal'] text-xs " + (discountType === 'percentage' ? 'bg-[#1B1A17] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}>نسبة مئوية</button>
                 <button onClick={function () { setDiscountType('fixed_final_amount') }} className={"flex-1 py-2 rounded-md font-['Tajawal'] text-xs " + (discountType === 'fixed_final_amount' ? 'bg-[#1B1A17] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}>مبلغ نهائي ثابت</button>
               </div>
-              <input type="number" value={discountValue} onChange={function (e) { setDiscountValue(e.target.value) }} placeholder={discountType === 'percentage' ? 'نسبة الخصم %' : 'المبلغ النهائي (د.أ)'} className="w-full px-3 py-2 mb-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              {discountType === 'fixed_final_amount' && (
+                <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">السعر الشهري الذي يدفعه. السنوي = 9 أشهر منه، والخمس سنوات = 15 شهراً، كما في قائمة الأسعار.</p>
+              )}
+              <input type="number" value={discountValue} onChange={function (e) { setDiscountValue(e.target.value) }} placeholder={discountType === 'percentage' ? 'نسبة الخصم %' : 'السعر الشهري النهائي (د.أ)'} className="w-full px-3 py-2 mb-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
               <div className="flex gap-2">
                 <button onClick={function () { setDiscountSelected(null) }} className="flex-1 py-2 bg-white text-[#4A473F] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs">إلغاء</button>
                 <button onClick={handleSaveDiscount} disabled={savingDiscount} className="flex-1 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-xs">حفظ</button>
@@ -822,7 +825,7 @@ export default function AdminDashboardPage() {
                 function removeClick() { handleRemoveDiscount(d.id) }
                 return (
                   <div key={d.id} className="flex justify-between items-center py-2 border-b border-[#D8D2C4] last:border-0">
-                    <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{getAccountNameForDiscount(d)} — {d.discount_type === 'percentage' ? d.discount_value + '%' : d.discount_value + ' د.أ نهائي'}</p>
+                    <p className="font-['Tajawal'] text-sm text-[#1B1A17]">{getAccountNameForDiscount(d)} — {d.discount_type === 'percentage' ? d.discount_value + '%' : d.discount_value + ' د.أ شهرياً'}</p>
                     <button onClick={removeClick} className="font-['Tajawal'] text-xs text-[#7A2E2E]">حذف</button>
                   </div>
                 )
