@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '../lib/supabase'
+import HeaderLines from '../components/HeaderLines'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -31,7 +32,8 @@ export default function ForgotPasswordPage() {
 
   return (
     <div dir="rtl" className="min-h-screen flex flex-col md:flex-row">
-      <div className="relative md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
+      <div className="relative isolate md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
+        <HeaderLines />
         <img
           src="/scale.png"
           alt=""

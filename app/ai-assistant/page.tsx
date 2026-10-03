@@ -7,6 +7,7 @@ import { authHeaders } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import ReactMarkdown from 'react-markdown'
 import Footer from '../components/Footer'
+import HeaderLines from '../components/HeaderLines'
 
 type Message = {
   role: string
@@ -192,7 +193,8 @@ export default function AiAssistantPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/">

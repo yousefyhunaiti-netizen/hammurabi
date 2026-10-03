@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import SiteMotion from "./components/SiteMotion";
 
 export const metadata: Metadata = {
   title: "حمورابي | منصة المحامين الأولى في الأردن",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl">
-      <body>{children}</body>
+      <body>
+        {children}
+        <SiteMotion />
+      </body>
     </html>
   );
 }

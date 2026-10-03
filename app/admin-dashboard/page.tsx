@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
 import { authHeaders } from '../lib/files'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
 
 type Payment = {
   id: number
@@ -107,7 +109,35 @@ export default function AdminDashboardPage() {
   const [sendingBroadcast, setSendingBroadcast] = useState(false)
   const [broadcastResult, setBroadcastResult] = useState('')
 
+  const [pendingLawyers, setPendingLawyers] = useState<any[]>([])
+  const [pendingFirms, setPendingFirms] = useState<any[]>([])
+  const [approvingKey, setApprovingKey] = useState('')
+
   const supabase = createClient()
+
+  // Accounts waiting for the team's review (new sign-ups send their details first).
+  async function loadPendingAccounts() {
+    const lawyersResult = await supabase
+      .from('lawyers')
+      .select('id, full_name, email, phone, city, bar_certificate_number, specialty_id, is_trainee, needs_onboarding, created_at')
+      .eq('is_approved', false)
+      .order('created_at', { ascending: false })
+    const firmsResult = await supabase
+      .from('firms')
+      .select('id, firm_name, email, phone, city, address, needs_onboarding, created_at')
+      .eq('is_approved', false)
+      .order('created_at', { ascending: false })
+    setPendingLawyers(lawyersResult.data || [])
+    setPendingFirms(firmsResult.data || [])
+  }
+
+  // Approving a new account emails it «تم تأكيد حسابك» with a link to subscribe.
+  async function handleApprove(accountType: 'lawyer' | 'firm', id: number) {
+    setApprovingKey(accountType + '-' + id)
+    await supabase.rpc('admin_approve_account', { p_account_type: accountType, p_account_id: id })
+    setApprovingKey('')
+    await loadPendingAccounts()
+  }
 
   async function loadCompedLists() {
     const lawyersResult = await supabase.from('lawyers').select('id, full_name, is_comped, is_active, city, specialty_id, created_at')
@@ -162,6 +192,7 @@ export default function AdminDashboardPage() {
       setDiscounts(discountsResult.data || [])
 
       await loadCompedLists()
+      await loadPendingAccounts()
 
       setLoading(false)
     }
@@ -530,7 +561,7 @@ export default function AdminDashboardPage() {
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -559,7 +590,8 @@ export default function AdminDashboardPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
@@ -703,6 +735,52 @@ export default function AdminDashboardPage() {
               )
             })}
           </div>
+        </div>
+
+        <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-8">
+          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-1">حسابات بانتظار المراجعة ({pendingLawyers.length + pendingFirms.length})</h2>
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">عند الاعتماد تصل الحساب رسالة «تم تأكيد حسابك» برابط الاشتراك. الحسابات الجديدة التي لم تُكمل معلوماتها بعد تظهر بعلامة «ناقصة».</p>
+          {pendingLawyers.length + pendingFirms.length === 0 && (
+            <p className="font-['Tajawal'] text-sm text-[#4A473F]">لا توجد حسابات بانتظار المراجعة</p>
+          )}
+          {pendingLawyers.map(function (l) {
+            const complete = !!l.bar_certificate_number && !!l.specialty_id && !!l.city
+            const key = 'lawyer-' + l.id
+            return (
+              <div key={key} className="flex flex-wrap justify-between items-center gap-3 bg-[#F3EEE4] rounded-md p-4 mb-2">
+                <div>
+                  <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">
+                    {l.full_name} <span className="font-normal text-xs text-[#AD8A4E]">— {l.is_trainee ? 'محامي متدرب' : 'محامي'}</span>
+                    {l.needs_onboarding && !complete && <span className="mr-2 px-2 py-0.5 bg-[#F2DEDC] text-[#7A2E2E] text-[10px] rounded-full">ناقصة</span>}
+                  </p>
+                  <p className="font-['Tajawal'] text-xs text-[#4A473F]">
+                    {[l.bar_certificate_number ? 'الرقم النقابي: ' + l.bar_certificate_number : '', l.city, l.phone, l.email].filter(Boolean).join(' — ')}
+                  </p>
+                </div>
+                <button onClick={function () { handleApprove('lawyer', l.id) }} disabled={approvingKey === key} className="px-4 py-2 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-xs disabled:opacity-60">
+                  {approvingKey === key ? 'جاري الاعتماد...' : 'اعتماد'}
+                </button>
+              </div>
+            )
+          })}
+          {pendingFirms.map(function (f) {
+            const complete = !!f.city && !!f.address && !!f.phone
+            const key = 'firm-' + f.id
+            return (
+              <div key={key} className="flex flex-wrap justify-between items-center gap-3 bg-[#F3EEE4] rounded-md p-4 mb-2">
+                <div>
+                  <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">
+                    {f.firm_name} <span className="font-normal text-xs text-[#AD8A4E]">— مكتب محاماة</span>
+                    {f.needs_onboarding && !complete && <span className="mr-2 px-2 py-0.5 bg-[#F2DEDC] text-[#7A2E2E] text-[10px] rounded-full">ناقصة</span>}
+                  </p>
+                  <p className="font-['Tajawal'] text-xs text-[#4A473F]">{[f.city, f.address, f.phone, f.email].filter(Boolean).join(' — ')}</p>
+                </div>
+                <button onClick={function () { handleApprove('firm', f.id) }} disabled={approvingKey === key} className="px-4 py-2 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-xs disabled:opacity-60">
+                  {approvingKey === key ? 'جاري الاعتماد...' : 'اعتماد'}
+                </button>
+              </div>
+            )
+          })}
         </div>
 
         <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-8">

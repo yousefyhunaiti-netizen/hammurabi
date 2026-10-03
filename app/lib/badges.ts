@@ -5,7 +5,21 @@ type SupabaseClient = ReturnType<typeof createClient>
 // The number on the profile icon for lawyer and firm accounts:
 // consultations still waiting for an answer
 // + bookings made since the account last opened «المواعيد والاستشارات» (/lawyer-history)
-// + answers waiting for a senior review (for the senior) or for a reviewer (for the firm).
+// + answers waiting for a senior review (for the senior) or for a reviewer (for the firm)
+// + unread «التنبيهات» that aren't already counted as work above
+//   (an answer sent for review, approved, or a reply to a job application).
+
+const INFO_KINDS = ['review_pending', 'review_approved', 'review_done', 'application_update']
+
+async function countUnreadNotifications(supabase: SupabaseClient, column: 'lawyer_id' | 'firm_id', id: number) {
+  const result = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq(column, id)
+    .eq('is_read', false)
+    .in('kind', INFO_KINDS)
+  return result.count || 0
+}
 
 async function countNewAppointments(supabase: SupabaseClient, filter: string, lastSeen: string | null) {
   if (!lastSeen) return 0
@@ -47,7 +61,9 @@ export async function getLawyerBadgeCount(supabase: SupabaseClient, lawyerId: nu
     .eq('reviewer_id', lawyerId)
     .eq('status', 'in_review')
 
-  return (pendingResult.count || 0) + newAppointments + (reviewResult.count || 0)
+  const unreadNotifications = await countUnreadNotifications(supabase, 'lawyer_id', lawyerId)
+
+  return (pendingResult.count || 0) + newAppointments + (reviewResult.count || 0) + unreadNotifications
 }
 
 export async function getFirmBadgeCount(supabase: SupabaseClient, firmId: number) {
@@ -81,7 +97,9 @@ export async function getFirmBadgeCount(supabase: SupabaseClient, firmId: number
     .is('reviewer_id', null)
     .or(firmFilter)
 
-  return (pendingResult.count || 0) + newAppointments + (reviewResult.count || 0)
+  const unreadNotifications = await countUnreadNotifications(supabase, 'firm_id', firmId)
+
+  return (pendingResult.count || 0) + newAppointments + (reviewResult.count || 0) + unreadNotifications
 }
 
 // Called when /lawyer-history opens: bookings made before now stop counting as new.

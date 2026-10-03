@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { lawyerStage, stagePath } from '../lib/accountStage'
+import OnboardingSteps from '../components/OnboardingSteps'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
 
 type Lawyer = {
   id: number
@@ -52,6 +56,8 @@ export default function LawyerDashboardPage() {
   const [lawyer, setLawyer] = useState<Lawyer | null>(null)
   const [notLawyer, setNotLawyer] = useState(false)
   const [notSubscribed, setNotSubscribed] = useState(false)
+  // a new account still in sign-up: this page is step ١ «معلوماتك»
+  const [onboarding, setOnboarding] = useState(false)
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -100,7 +106,10 @@ export default function LawyerDashboardPage() {
         return
       }
 
-      if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
+      const inSignup = lawyerStage(lawyerResult.data) !== 'ready'
+      setOnboarding(inSignup)
+
+      if (!inSignup && !lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
         setNotSubscribed(true)
         setLoading(false)
         return
@@ -188,6 +197,12 @@ export default function LawyerDashboardPage() {
   async function handleSave() {
     if (!lawyer) return
     setSaveMessage('')
+
+    if (onboarding && (!barNumber.trim() || selectedSpecialties.length === 0 || selectedCities.length === 0)) {
+      setSaveMessage('يرجى إدخال الرقم النقابي واختيار الاختصاص والمدينة')
+      return
+    }
+
     setSaving(true)
 
     const sortedDays = selectedDays.slice().sort()
@@ -230,6 +245,13 @@ export default function LawyerDashboardPage() {
 
     setSaveMessage('تم حفظ التغييرات بنجاح')
 
+    if (onboarding) {
+      // on to the next sign-up step (usually «قيد المراجعة»)
+      const fresh = await supabase.from('lawyers').select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped').eq('id', lawyer.id).maybeSingle()
+      router.push(fresh.data ? stagePath('lawyer', lawyerStage(fresh.data)) : '/account-review')
+      return
+    }
+
     setTimeout(function () {
       router.push('/lawyer-info')
     }, 1200)
@@ -238,7 +260,7 @@ export default function LawyerDashboardPage() {
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -269,10 +291,14 @@ export default function LawyerDashboardPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-3xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
+            {onboarding ? (
+              <button onClick={handleLogout} className="text-[#D8D2C4] hover:text-[#AD8A4E] transition">تسجيل الخروج</button>
+            ) : (
             <div className="flex gap-5 items-center">
               <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
               <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
@@ -292,13 +318,20 @@ export default function LawyerDashboardPage() {
                 )}
               </div>
             </div>
+            )}
           </div>
-          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">لوحة التحكم</h1>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">{onboarding ? 'أكمل معلوماتك' : 'لوحة التحكم'}</h1>
           <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-10">
+        {onboarding && (
+          <div>
+            <OnboardingSteps current={1} />
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] text-center mb-6">أدخل الرقم النقابي واختصاصك ومدينتك على الأقل، ثم اضغط «حفظ» لإرسال حسابك للمراجعة.</p>
+          </div>
+        )}
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">المعلومات الأساسية</h2>
 
@@ -511,7 +544,7 @@ export default function LawyerDashboardPage() {
         </button>
 
         {saveMessage && (
-          <p className="mt-4 text-center font-['Tajawal'] text-sm text-[#2F4538]">{saveMessage}</p>
+          <p className={"mt-4 text-center font-['Tajawal'] text-sm " + (saveMessage.startsWith('تم') ? 'text-[#2F4538]' : 'text-[#7A2E2E]')}>{saveMessage}</p>
         )}
       </div>
     </div>

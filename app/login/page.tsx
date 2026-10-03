@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { lawyerStage, firmStage, stagePath } from '../lib/accountStage'
+import HeaderLines from '../components/HeaderLines'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -35,17 +37,19 @@ export default function LoginPage() {
       return
     }
 
-    const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+    // New lawyers and firms go to the sign-up step they're on
+    // (info → review → subscription); everyone else to their tools.
+    const lawyerResult = await supabase.from('lawyers').select('id, needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped').eq('user_id', user.id).maybeSingle()
     if (lawyerResult.data) {
       setLoading(false)
-      router.push('/lawyer-tools')
+      router.push(stagePath('lawyer', lawyerStage(lawyerResult.data as any)))
       return
     }
 
-    const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+    const firmResult = await supabase.from('firms').select('id, needs_onboarding, city, address, phone, is_approved, is_active, is_comped').eq('user_id', user.id).maybeSingle()
     if (firmResult.data) {
       setLoading(false)
-      router.push('/firm-dashboard')
+      router.push(stagePath('firm', firmStage(firmResult.data as any)))
       return
     }
 
@@ -55,7 +59,8 @@ export default function LoginPage() {
 
   return (
     <div dir="rtl" className="min-h-screen flex flex-col md:flex-row">
-      <div className="relative md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
+      <div className="relative isolate md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
+        <HeaderLines />
         <img
           src="/scale.png"
           alt=""

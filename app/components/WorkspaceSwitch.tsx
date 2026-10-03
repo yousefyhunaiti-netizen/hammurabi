@@ -5,7 +5,7 @@ import { createClient } from '../lib/supabase'
 
 type Props = {
   // 'banner': a thin strip at the top of a tool page
-  // 'card': the full switch on the tools page (أدواتي)
+  // 'card': the switch on the tools page (أدواتي)
   variant?: 'banner' | 'card'
 }
 
@@ -14,10 +14,24 @@ function todayString() {
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
 }
 
-function formatDateDisplay(dateStr: string) {
-  const parts = dateStr.split('T')[0].split('-')
-  if (parts.length !== 3) return dateStr
-  return parts[2] + '/' + parts[1] + '/' + parts[0]
+// Tells every switch and every tool page on screen that the workspace changed,
+// so they refresh in place instead of reloading the whole page.
+export const WORKSPACE_EVENT = 'hm:workspace'
+
+// The sliding switch between the firm's work and the lawyer's private work.
+function SlidingSwitch(props: { privateMode: boolean; busy: boolean; onChange: (value: boolean) => void; small?: boolean; onDark?: boolean }) {
+  const className = 'hm-switch' + (props.small ? ' small' : '') + (props.onDark ? ' on-dark' : '')
+  return (
+    <div className={className} role="radiogroup" aria-label="مساحة العمل">
+      <span className="hm-switch-thumb" style={{ insetInlineStart: props.privateMode ? '50%' : '4px' }} aria-hidden="true"></span>
+      <button type="button" role="radio" aria-checked={!props.privateMode} disabled={props.busy} className={!props.privateMode ? 'on' : ''} onClick={function () { if (props.privateMode) props.onChange(false) }}>
+        عمل المكتب
+      </button>
+      <button type="button" role="radio" aria-checked={props.privateMode} disabled={props.busy} className={props.privateMode ? 'on' : ''} onClick={function () { if (!props.privateMode) props.onChange(true) }}>
+        حسابي الخاص 🔒
+      </button>
+    </div>
+  )
 }
 
 // The private sub-account switch for lawyers.
@@ -60,13 +74,33 @@ export default function WorkspaceSwitch(props: Props) {
     }
 
     load()
+
+    // another switch on the page flipped: follow it
+    function onChange(e: Event) {
+      const detail = (e as CustomEvent).detail
+      if (detail && typeof detail.privateMode === 'boolean') setPrivateMode(detail.privateMode)
+    }
+    window.addEventListener(WORKSPACE_EVENT, onChange)
+    return function () {
+      window.removeEventListener(WORKSPACE_EVENT, onChange)
+    }
   }, [])
 
   async function switchTo(value: boolean) {
-    if (!lawyerId) return
+    if (!lawyerId || saving) return
+    const previous = privateMode
     setSaving(true)
-    await supabase.from('lawyers').update({ private_mode: value }).eq('id', lawyerId)
-    window.location.reload()
+    setPrivateMode(value)
+
+    const result = await supabase.from('lawyers').update({ private_mode: value }).eq('id', lawyerId).select('private_mode')
+    setSaving(false)
+
+    if (result.error || !result.data || result.data.length === 0 || result.data[0].private_mode !== value) {
+      setPrivateMode(previous)
+      return
+    }
+
+    window.dispatchEvent(new CustomEvent(WORKSPACE_EVENT, { detail: { privateMode: value } }))
   }
 
   if (!loaded || !lawyerId) return null
@@ -76,45 +110,22 @@ export default function WorkspaceSwitch(props: Props) {
   if (variant === 'banner') {
     if (!activeUntil) return null
 
-    if (privateMode) {
-      return (
-        <div className="bg-[#1B1A17] text-[#F3EEE4] rounded-lg px-4 py-3 mb-6 flex flex-wrap items-center justify-between gap-2">
-          <p className="font-['Tajawal'] text-sm">🔒 أنت في <strong>حسابك الخاص</strong> — هذه المساحة لا يراها المكتب</p>
-          <button onClick={function () { switchTo(false) }} disabled={saving} className="px-3 py-1.5 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-xs disabled:opacity-60">
-            العودة لعمل المكتب
-          </button>
-        </div>
-      )
-    }
-
     return (
-      <div className="bg-white border border-[#D8D2C4] rounded-lg px-4 py-3 mb-6 flex flex-wrap items-center justify-between gap-2">
-        <p className="font-['Tajawal'] text-sm text-[#4A473F]">أنت في مساحة <strong>عمل المكتب</strong></p>
-        <button onClick={function () { switchTo(true) }} disabled={saving} className="px-3 py-1.5 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-xs disabled:opacity-60">
-          التبديل إلى حسابي الخاص 🔒
-        </button>
+      <div className={"rounded-lg px-4 py-3 mb-6 flex flex-wrap items-center gap-3 transition-colors duration-300 " + (privateMode ? 'bg-[#1B1A17] text-[#F3EEE4] justify-between' : 'bg-transparent justify-end px-0 py-0')}>
+        {privateMode && <p className="font-['Tajawal'] text-sm font-bold">🔒 أنت في حسابك الخاص</p>}
+        <SlidingSwitch privateMode={privateMode} busy={saving} onChange={switchTo} small onDark={privateMode} />
       </div>
     )
   }
 
   if (activeUntil) {
     return (
-      <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 mb-8">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 mb-8 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
           <span className="w-1 h-5 bg-[#AD8A4E] rounded"></span>
           <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">مساحة العمل</h2>
         </div>
-        <div className="flex bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-1 w-fit mb-3">
-          <button onClick={function () { if (privateMode) switchTo(false) }} disabled={saving} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (!privateMode ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
-            عمل المكتب
-          </button>
-          <button onClick={function () { if (!privateMode) switchTo(true) }} disabled={saving} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (privateMode ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
-            حسابي الخاص 🔒
-          </button>
-        </div>
-        <p className="font-['Tajawal'] text-xs text-[#4A473F]">
-          في حسابك الخاص تكون القضايا والوكالات والفواتير والمصاريف والأجندة مساحة منفصلة لا يراها المكتب. الحساب الخاص فعّال حتى {formatDateDisplay(activeUntil)}.
-        </p>
+        <SlidingSwitch privateMode={privateMode} busy={saving} onChange={switchTo} />
       </div>
     )
   }
@@ -125,7 +136,7 @@ export default function WorkspaceSwitch(props: Props) {
     <a href="/subscription#private" className="block bg-white border border-[#D8D2C4] rounded-lg p-5 mb-8 hover:border-[#AD8A4E] transition">
       <p className="font-['Tajawal'] font-bold text-[#1B1A17] mb-1">🔒 الحساب الخاص</p>
       <p className="font-['Tajawal'] text-sm text-[#4A473F]">
-        مساحة منفصلة لقضاياك وموكليك الخاصين لا يراها المكتب، بنصف سعر الاشتراك. اعرف المزيد ←
+        مساحة عمل خاصة ومستقلة لقضاياك وموكليك، بنصف سعر الاشتراك. اعرف المزيد ←
       </p>
     </a>
   )

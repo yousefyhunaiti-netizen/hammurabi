@@ -4,6 +4,8 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import Footer from '../components/Footer'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
 
 function CheckoutContent() {
   const searchParams = useSearchParams()
@@ -147,7 +149,8 @@ function CheckoutContent() {
 
   function renderNavAndHeader(title: string) {
     return (
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/">
@@ -273,7 +276,7 @@ function CheckoutContent() {
 
 export default function CheckoutPage() {
   return (
-    <Suspense fallback={<div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center"><p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p></div>}>
+    <Suspense fallback={<div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center"><Loader /></div>}>
       <CheckoutContent />
     </Suspense>
   )

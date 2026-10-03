@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { markAppointmentsSeen } from '../lib/badges'
 import Footer from '../components/Footer'
+import Notifications, { OverdueAlert } from '../components/Notifications'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
 
 type Appointment = {
   id: number
@@ -32,6 +35,8 @@ type Consultation = {
   created_at: string
   reviewer_id: number | null
   review_target: string | null
+  answer_due_at: string | null
+  review_due_at: string | null
 }
 
 type CustomerName = {
@@ -78,6 +83,9 @@ export default function LawyerHistoryPage() {
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [reviewBusy, setReviewBusy] = useState(false)
+  const [deadlineHours, setDeadlineHours] = useState('')
+  const [deadlineMessage, setDeadlineMessage] = useState('')
+  const [now, setNow] = useState(Date.now())
 
   const supabase = createClient()
   const menuRef = useRef<HTMLDivElement>(null)
@@ -92,6 +100,11 @@ export default function LawyerHistoryPage() {
     return function () {
       document.removeEventListener('mousedown', handleClickOutside)
     }
+  }, [])
+
+  useEffect(function () {
+    const timer = setInterval(function () { setNow(Date.now()) }, 60000)
+    return function () { clearInterval(timer) }
   }, [])
 
   function countConversations(rows: any[]) {
@@ -351,7 +364,79 @@ export default function LawyerHistoryPage() {
     return nameMatch || questionMatch
   })
 
+  // Who has to act now: the answering lawyer while pending,
+  // the chosen senior while in review (the firm sees everything).
+  function isResponsible(c: Consultation) {
+    if (accountType === 'firm') return true
+    if (c.status === 'pending') return c.lawyer_id === accountId
+    if (c.status === 'in_review') return c.reviewer_id === accountId
+    return false
+  }
+
+  function currentDue(c: Consultation) {
+    if (c.status === 'pending') return c.answer_due_at
+    if (c.status === 'in_review') return c.review_due_at
+    return null
+  }
+
+  function dueInfo(c: Consultation) {
+    const due = currentDue(c)
+    if (!due || !isResponsible(c)) return null
+    const ms = new Date(due).getTime() - now
+    const isAnswer = c.status === 'pending'
+    if (ms < 0) {
+      return { overdue: true, label: isAnswer ? 'تجاوزت مهلة الإجابة' : 'تجاوزت مهلة المراجعة' }
+    }
+    const hours = Math.ceil(ms / 3600000)
+    return { overdue: false, label: (isAnswer ? 'مهلة الإجابة: ' : 'مهلة المراجعة: ') + (hours <= 1 ? 'أقل من ساعة' : hours + ' ساعة متبقية') }
+  }
+
+  const overdueAlerts: OverdueAlert[] = consultations.filter(function (c) {
+    const info = dueInfo(c)
+    return !!info && info.overdue
+  }).map(function (c) {
+    const who = c.status === 'pending'
+      ? (accountType === 'firm' ? (getLawyerName(c.lawyer_id) || 'المكتب') : '')
+      : (accountType === 'firm' ? (getLawyerName(c.reviewer_id) || 'لم يُختر مراجع بعد') : '')
+    const base = c.status === 'pending'
+      ? 'تجاوزت استشارة ' + getCustomerName(c.customer_id) + ' مهلة الإجابة'
+      : 'تجاوزت مراجعة إجابة على استشارة ' + getCustomerName(c.customer_id) + ' المهلة'
+    return { consultationId: c.id, message: base + (who ? ' (' + who + ')' : '') }
+  })
+
+  function openConsultationById(consultationId: number) {
+    const found = consultations.find(function (c) { return c.id === consultationId })
+    if (found) {
+      setTab('consultations')
+      openConsultation(found)
+    }
+  }
+
+  // Firm: give one consultation more (or less) time, counted from now.
+  async function handleSetDeadline(c: Consultation) {
+    const hours = Number(deadlineHours)
+    setDeadlineMessage('')
+    if (!deadlineHours.trim() || isNaN(hours) || hours < 1 || hours > 720) {
+      setDeadlineMessage('أدخل عدد ساعات بين 1 و 720')
+      return
+    }
+    const kind = c.status === 'pending' ? 'answer' : 'review'
+    const result = await supabase.rpc('set_consultation_deadline', { p_consultation_id: c.id, p_kind: kind, p_hours: Math.round(hours) })
+    if (result.error || result.data !== true) {
+      setDeadlineMessage('تعذر تعديل المهلة، حاول مرة أخرى')
+      return
+    }
+    const newDue = new Date(Date.now() + Math.round(hours) * 3600000).toISOString()
+    const updated = kind === 'answer' ? { ...c, answer_due_at: newDue } : { ...c, review_due_at: newDue }
+    setConsultations(consultations.map(function (item) { return item.id === c.id ? updated : item }))
+    setSelectedConsultation(updated)
+    setDeadlineHours('')
+    setDeadlineMessage('تم تعديل المهلة')
+  }
+
   function openConsultation(c: Consultation) {
+    setDeadlineHours('')
+    setDeadlineMessage('')
     setSelectedConsultation(c)
     setAnswerText(c.answer || '')
     setFeeText(c.fee ? String(c.fee) : '')
@@ -528,18 +613,28 @@ export default function LawyerHistoryPage() {
       openConsultation(c)
     }
     return (
-      <div key={c.id} onClick={cardClick} className="cursor-pointer bg-white border border-[#D8D2C4] rounded-lg p-4 mb-3 hover:border-[#AD8A4E] transition">
+      <div key={c.id} onClick={cardClick} className={"cursor-pointer bg-white border rounded-lg p-4 mb-3 hover:border-[#AD8A4E] transition " + (dueInfo(c) && dueInfo(c)!.overdue ? 'border-[#7A2E2E]' : 'border-[#D8D2C4]')}>
         <div className="flex items-center gap-2 mb-1">
           <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{getCustomerName(c.customer_id)}</p>
           {accountType === 'lawyer' && c.reviewer_id === accountId && c.lawyer_id !== accountId && c.status === 'in_review' && (
             <span className="px-2 py-0.5 bg-[#AD8A4E] text-white text-[10px] font-['Tajawal'] rounded-full">للمراجعة</span>
+          )}
+          {c.status === 'in_review' && !(accountType === 'lawyer' && c.reviewer_id === accountId) && (
+            <span className="px-2 py-0.5 bg-[#F0E6D2] text-[#8C6C35] text-[10px] font-['Tajawal'] font-bold rounded-full">بانتظار المراجعة</span>
           )}
         </div>
         <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1 line-clamp-2">{c.question}</p>
         {accountType === 'firm' && (
           <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">{getConsultOwnerLabel(c)}</p>
         )}
-        <p className="font-['Tajawal'] text-xs text-[#AD8A4E]">{getStatusLabel(c.status)}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="font-['Tajawal'] text-xs text-[#AD8A4E]">{getStatusLabel(c.status)}</p>
+          {dueInfo(c) && (
+            <p className={"font-['Tajawal'] text-xs " + (dueInfo(c)!.overdue ? 'text-[#7A2E2E] font-bold' : 'text-[#4A473F]')}>
+              {dueInfo(c)!.overdue ? '⚠️ ' : '⏱ '}{dueInfo(c)!.label}
+            </p>
+          )}
+        </div>
       </div>
     )
   }
@@ -579,6 +674,25 @@ export default function LawyerHistoryPage() {
             <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">السؤال</p>
             <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed whitespace-pre-wrap">{c.question}</p>
           </div>
+
+          {dueInfo(c) && (
+            <p className={"font-['Tajawal'] text-sm mb-4 " + (dueInfo(c)!.overdue ? 'text-[#7A2E2E] font-bold' : 'text-[#4A473F]')}>
+              {dueInfo(c)!.overdue ? '⚠️ ' : '⏱ '}{dueInfo(c)!.label}
+            </p>
+          )}
+
+          {accountType === 'firm' && (c.status === 'pending' || c.status === 'in_review') && (
+            <div className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-3 mb-4">
+              <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">
+                تعديل مهلة {c.status === 'pending' ? 'الإجابة' : 'المراجعة'} لهذه الاستشارة (بالساعات، تُحسب من الآن)
+              </p>
+              <div className="flex gap-2">
+                <input type="number" min="1" max="720" value={deadlineHours} onChange={function (e) { setDeadlineHours(e.target.value) }} placeholder="مثال: 12" className="flex-1 px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+                <button type="button" onClick={function () { handleSetDeadline(c) }} className="px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-xs">حفظ المهلة</button>
+              </div>
+              {deadlineMessage && <p className="font-['Tajawal'] text-xs text-[#2F4538] mt-2">{deadlineMessage}</p>}
+            </div>
+          )}
 
           {canAnswer && (
             <div>
@@ -744,7 +858,7 @@ export default function LawyerHistoryPage() {
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -775,7 +889,8 @@ export default function LawyerHistoryPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
@@ -823,6 +938,15 @@ export default function LawyerHistoryPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-10 flex-1 w-full">
+        {accountId && (
+          <Notifications
+            accountType={accountType}
+            accountId={accountId}
+            overdue={overdueAlerts}
+            onOpenConsultation={openConsultationById}
+          />
+        )}
+
         {accountType === 'firm' && (
           <select
             value={filter}

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
+import HeaderLines from '../../components/HeaderLines'
+import Loader from '../../components/Loader'
 
 type Question = {
   id: number
@@ -152,7 +154,7 @@ export default function QuestionDetailPage() {
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -167,7 +169,8 @@ export default function QuestionDetailPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-3xl mx-auto">
           <a href="/community" className="font-['Tajawal'] text-sm text-[#AD8A4E] hover:underline mb-4 inline-block">← العودة للمجتمع</a>
           <h1 className="font-['Tajawal'] font-bold text-3xl mb-3">{question.title}</h1>

@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
+import OnboardingSteps from '../components/OnboardingSteps'
+import { lawyerStage, firmStage, stagePath } from '../lib/accountStage'
 
 type AccountInfo = {
   id: number
@@ -14,6 +18,7 @@ type AccountInfo = {
   subscription_tier: string | null
   firm_id?: number | null
   subaccount_until?: string | null
+  needs_onboarding?: boolean | null
 }
 
 function todayString() {
@@ -77,9 +82,16 @@ export default function SubscriptionPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier, firm_id, subaccount_until').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier, firm_id, subaccount_until, needs_onboarding, bar_certificate_number, specialty_id, city').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
+        // a new account that hasn't reached this step yet goes back to its step
+        const stage = lawyerStage(lawyerResult.data)
+        if (stage === 'info' || stage === 'review') {
+          router.replace(stagePath('lawyer', stage))
+          return
+        }
+
         setAccountType('lawyer')
         setAccount(lawyerResult.data)
 
@@ -92,9 +104,15 @@ export default function SubscriptionPage() {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('id, is_approved, is_comped, is_active, subscription_tier').eq('user_id', userId).maybeSingle()
+      const firmResult = await supabase.from('firms').select('id, is_approved, is_comped, is_active, subscription_tier, needs_onboarding, city, address, phone').eq('user_id', userId).maybeSingle()
 
       if (firmResult.data) {
+        const stage = firmStage(firmResult.data)
+        if (stage === 'info' || stage === 'review') {
+          router.replace(stagePath('firm', stage))
+          return
+        }
+
         setAccountType('firm')
         setAccount(firmResult.data)
 
@@ -162,7 +180,7 @@ export default function SubscriptionPage() {
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -208,7 +226,8 @@ export default function SubscriptionPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
@@ -258,6 +277,12 @@ export default function SubscriptionPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-12 flex-1 w-full">
+        {account && account.needs_onboarding && !account.is_active && (
+          <div>
+            <OnboardingSteps current={3} />
+            <p className="font-['Tajawal'] text-sm text-[#2F4538] font-bold text-center mb-8">تم تأكيد حسابك. اختر الباقة المناسبة لتبدأ باستخدام أدواتك.</p>
+          </div>
+        )}
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-5 mb-8">
           <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-3">كل باقة تشمل:</p>
           {accountType === 'firm' && (
@@ -333,8 +358,9 @@ export default function SubscriptionPage() {
         {accountType === 'lawyer' && account && (account.firm_id || (account.subaccount_until && account.subaccount_until >= todayString())) && (
           <div id="private" className="bg-white border border-[#D8D2C4] rounded-2xl p-6 mt-10">
             <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17] mb-1">🔒 الحساب الخاص</h2>
+            <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">مساحة عمل خاصة ومستقلة لقضاياك وموكليك:</p>
             <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed mb-4">
-              مساحة عمل منفصلة لقضاياك وموكليك الخاصين: القضايا والوكالات والفواتير والمصاريف والأجندة في حسابك الخاص لا يراها المكتب. تنتقل بين عمل المكتب وحسابك الخاص بضغطة من صفحة «أدواتي». السعر نصف سعر اشتراك المحامي.
+              أدر القضايا والوكالات والفواتير والمصاريف والأجندة الخاصة بك بشكل منفصل، دون أن تكون مرئية للمكتب. يمكنك التنقل بسهولة بين حساب المكتب وحسابك الخاص بضغطة واحدة من صفحة «أدواتي».
             </p>
             {account.subaccount_until && account.subaccount_until >= todayString() && (
               <p className="font-['Tajawal'] text-sm text-[#2F4538] font-bold mb-4">حسابك الخاص فعّال حتى {formatDateDisplay(account.subaccount_until)}. أي تجديد يُضاف إلى المدة المتبقية.</p>

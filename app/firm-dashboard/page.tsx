@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import OnboardingSteps from '../components/OnboardingSteps'
+import { firmStage, stagePath } from '../lib/accountStage'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
 
 type Firm = {
   id: number
@@ -17,6 +21,8 @@ type Firm = {
   founded_year: number | null
   google_maps_link: string | null
   website_url: string | null
+  answer_hours: number | null
+  review_hours: number | null
 }
 
 type Specialty = {
@@ -38,6 +44,9 @@ type Consultation = {
   question: string
   status: string
   lawyer_id: number | null
+  answer: string | null
+  reviewer_id: number | null
+  review_due_at: string | null
 }
 
 type SearchResult = {
@@ -53,6 +62,8 @@ export default function FirmDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [firm, setFirm] = useState<Firm | null>(null)
   const [notFirm, setNotFirm] = useState(false)
+  // a new firm still in sign-up: this page is step ١ «معلوماتك»
+  const [onboarding, setOnboarding] = useState(false)
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [roster, setRoster] = useState<FirmLawyer[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
@@ -74,6 +85,11 @@ export default function FirmDashboardPage() {
   const [profileMessage, setProfileMessage] = useState('')
 
   const [firmConsultations, setFirmConsultations] = useState<Consultation[]>([])
+  const [reviewBusyId, setReviewBusyId] = useState<number | null>(null)
+  const [answerHours, setAnswerHours] = useState('24')
+  const [reviewHours, setReviewHours] = useState('24')
+  const [deadlineSaving, setDeadlineSaving] = useState(false)
+  const [deadlineMessage, setDeadlineMessage] = useState('')
   const [assignSelections, setAssignSelections] = useState<{ [key: number]: string }>({})
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -90,10 +106,19 @@ export default function FirmDashboardPage() {
       .eq('firm_id', firmId)
 
     setRoster(rosterResult.data || [])
+    return (rosterResult.data || []).map(function (l: FirmLawyer) { return l.id })
   }
 
-  async function loadConsultations(firmId: number) {
-    const result = await supabase.from('consultations').select('id, question, status, lawyer_id').eq('firm_id', firmId)
+  // Questions sent to the firm, plus every roster lawyer's own (for the review box).
+  async function loadConsultations(firmId: number, rosterIds: number[]) {
+    let filter = 'firm_id.eq.' + firmId
+    if (rosterIds.length > 0) {
+      filter = filter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
+    }
+    const result = await supabase
+      .from('consultations')
+      .select('id, question, status, lawyer_id, answer, reviewer_id, review_due_at')
+      .or(filter)
     setFirmConsultations(result.data || [])
   }
 
@@ -109,7 +134,7 @@ export default function FirmDashboardPage() {
 
       const firmResult = await supabase
         .from('firms')
-        .select('id, firm_name, show_lawyer_names, bio, address, city, phone, founded_year, google_maps_link, website_url')
+        .select('id, firm_name, show_lawyer_names, bio, address, city, phone, founded_year, google_maps_link, website_url, answer_hours, review_hours, needs_onboarding, is_approved, is_active, is_comped')
         .eq('user_id', userResult.data.user.id)
         .single()
 
@@ -118,6 +143,13 @@ export default function FirmDashboardPage() {
         setLoading(false)
         return
       }
+
+      const stage = firmStage(firmResult.data as any)
+      if (stage === 'review' || stage === 'subscribe') {
+        router.replace(stagePath('firm', stage))
+        return
+      }
+      setOnboarding(stage === 'info')
 
       setFirm(firmResult.data)
       setShowNames(firmResult.data.show_lawyer_names === true)
@@ -128,6 +160,8 @@ export default function FirmDashboardPage() {
       setProfileFoundedYear(firmResult.data.founded_year ? String(firmResult.data.founded_year) : '')
       setProfileMapsLink(firmResult.data.google_maps_link || '')
       setProfileWebsite(firmResult.data.website_url || '')
+      setAnswerHours(String(firmResult.data.answer_hours || 24))
+      setReviewHours(String(firmResult.data.review_hours || 24))
 
       const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmResult.data.id).eq('is_read', false)
       const uniqueSenders = new Set((unreadResult.data || []).map(function (m) {
@@ -140,8 +174,8 @@ export default function FirmDashboardPage() {
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
 
-      await loadRoster(firmResult.data.id)
-      await loadConsultations(firmResult.data.id)
+      const rosterIds = await loadRoster(firmResult.data.id)
+      await loadConsultations(firmResult.data.id, rosterIds)
 
       const allLawyersResult = await supabase
         .from('lawyers')
@@ -191,8 +225,14 @@ export default function FirmDashboardPage() {
 
   async function handleSaveProfile() {
     if (!firm) return
-    setProfileSaving(true)
     setProfileMessage('')
+
+    if (onboarding && (!profileCity.trim() || !profileAddress.trim() || !profilePhone.trim())) {
+      setProfileMessage('يرجى إدخال المدينة والعنوان ورقم الهاتف')
+      return
+    }
+
+    setProfileSaving(true)
 
     await supabase.from('firms').update({
       bio: profileBio,
@@ -206,6 +246,12 @@ export default function FirmDashboardPage() {
 
     setProfileSaving(false)
     setProfileMessage('تم حفظ معلومات المكتب بنجاح')
+
+    if (onboarding) {
+      // on to the next sign-up step (usually «قيد المراجعة»)
+      const fresh = await supabase.from('firms').select('needs_onboarding, city, address, phone, is_approved, is_active, is_comped').eq('id', firm.id).maybeSingle()
+      router.push(fresh.data ? stagePath('firm', firmStage(fresh.data as any)) : '/account-review')
+    }
   }
 
   function getSearchResults() {
@@ -249,8 +295,44 @@ export default function FirmDashboardPage() {
     await supabase.from('consultations').update({ lawyer_id: Number(selectedId) }).eq('id', consultationId)
 
     if (firm) {
-      await loadConsultations(firm.id)
+      await loadConsultations(firm.id, roster.map(function (l) { return l.id }))
     }
+  }
+
+  // Firm-wide default deadlines, applied to every new consultation automatically.
+  async function handleSaveDeadlines() {
+    if (!firm) return
+    const a = Number(answerHours)
+    const r = Number(reviewHours)
+    setDeadlineMessage('')
+    if (isNaN(a) || isNaN(r) || a < 1 || r < 1 || a > 720 || r > 720) {
+      setDeadlineMessage('أدخل عدد ساعات بين 1 و 720')
+      return
+    }
+    setDeadlineSaving(true)
+    const result = await supabase.from('firms').update({ answer_hours: Math.round(a), review_hours: Math.round(r) }).eq('id', firm.id)
+    setDeadlineSaving(false)
+    setDeadlineMessage(result.error ? 'تعذر الحفظ، حاول مرة أخرى' : 'تم حفظ المهل')
+  }
+
+  // Choose which senior reviews an answer before it reaches the customer.
+  async function handleAssignReviewer(consultationId: number, reviewerId: number) {
+    setReviewBusyId(consultationId)
+    const result = await supabase.rpc('assign_consultation_reviewer', { p_consultation_id: consultationId, p_reviewer_id: reviewerId })
+    setReviewBusyId(null)
+    if (!result.error && result.data === true) {
+      setFirmConsultations(firmConsultations.map(function (c) {
+        return c.id === consultationId ? { ...c, reviewer_id: reviewerId } : c
+      }))
+    }
+  }
+
+  function reviewDueLabel(c: Consultation) {
+    if (!c.review_due_at) return null
+    const ms = new Date(c.review_due_at).getTime() - Date.now()
+    if (ms < 0) return { overdue: true, label: 'تجاوزت مهلة المراجعة' }
+    const hours = Math.ceil(ms / 3600000)
+    return { overdue: false, label: 'مهلة المراجعة: ' + (hours <= 1 ? 'أقل من ساعة' : hours + ' ساعة متبقية') }
   }
 
   function getSpecialtyName(specialtyId: number) {
@@ -259,6 +341,51 @@ export default function FirmDashboardPage() {
   }
 
   const unassignedConsultations = firmConsultations.filter(function (c) { return !c.lawyer_id })
+  const reviewConsultations = firmConsultations.filter(function (c) { return c.status === 'in_review' })
+  const reviewNeedsSenior = reviewConsultations.filter(function (c) { return !c.reviewer_id })
+
+  function getLawyerName(id: number | null) {
+    const found = roster.find(function (l) { return l.id === id })
+    return found ? found.full_name : ''
+  }
+
+  function renderReviewItem(c: Consultation) {
+    const seniors = roster.filter(function (l) { return l.is_senior && l.id !== c.lawyer_id })
+    const due = reviewDueLabel(c)
+    return (
+      <div key={c.id} className={"bg-[#F3EEE4] rounded-md p-4 mb-3 border " + (due && due.overdue ? 'border-[#7A2E2E]' : 'border-transparent')}>
+        <div className="flex flex-wrap justify-between items-start gap-2 mb-1">
+          <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] line-clamp-2 flex-1">{c.question}</p>
+          <span className="px-2 py-0.5 bg-[#F0E6D2] text-[#8C6C35] text-[11px] font-['Tajawal'] font-bold rounded-full whitespace-nowrap">بانتظار المراجعة</span>
+        </div>
+        <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">إجابة المحامي {getLawyerName(c.lawyer_id) || '-'}</p>
+        {c.answer && <p className="font-['Tajawal'] text-xs text-[#4A473F] line-clamp-3 whitespace-pre-wrap mb-2">{c.answer}</p>}
+        {due && <p className={"font-['Tajawal'] text-xs mb-2 " + (due.overdue ? 'text-[#7A2E2E] font-bold' : 'text-[#4A473F]')}>{due.overdue ? '⚠️ ' : '⏱ '}{due.label}</p>}
+        {seniors.length === 0 ? (
+          <p className="font-['Tajawal'] text-xs text-[#7A2E2E]">لا يوجد محامي أقدم آخر لمراجعتها. عيّن محامياً أقدم من قائمة محامي المكتب أدناه.</p>
+        ) : (
+          <div>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">{c.reviewer_id ? 'قيد المراجعة لدى ' + getLawyerName(c.reviewer_id) + '، ويمكنك تغيير المراجع:' : 'اختر المحامي الأقدم الذي سيراجعها:'}</p>
+            <div className="flex flex-wrap gap-2">
+              {seniors.map(function (senior) {
+                const isCurrent = c.reviewer_id === senior.id
+                return (
+                  <button
+                    key={senior.id}
+                    onClick={function () { if (!isCurrent) handleAssignReviewer(c.id, senior.id) }}
+                    disabled={reviewBusyId === c.id}
+                    className={"px-3 py-1.5 rounded-md font-['Tajawal'] text-xs disabled:opacity-60 " + (isCurrent ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white text-[#1B1A17] border border-[#D8D2C4] hover:border-[#AD8A4E]')}
+                  >
+                    {isCurrent ? '✓ ' : ''}{senior.full_name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // Seniors review other lawyers' consultation answers before they reach the customer.
   async function handleToggleSenior(lawyer: FirmLawyer) {
@@ -269,7 +396,7 @@ export default function FirmDashboardPage() {
 
   function renderRosterCard(lawyer: FirmLawyer) {
     return (
-      <div key={lawyer.id} className="bg-[#F3EEE4] rounded-md p-4 text-center">
+      <div key={lawyer.id} className="bg-[#F3EEE4] rounded-md p-4 text-center flex flex-col items-center">
         {lawyer.photo_url ? (
           <img src={lawyer.photo_url} alt={lawyer.full_name} className="w-14 h-14 rounded-full object-cover mx-auto mb-2" />
         ) : (
@@ -278,10 +405,10 @@ export default function FirmDashboardPage() {
           </div>
         )}
         <p className="font-['Tajawal'] font-medium text-sm text-[#1B1A17]">{lawyer.full_name}</p>
-        <p className="font-['Tajawal'] text-xs text-[#4A473F]">{getSpecialtyName(lawyer.specialty_id)}</p>
+        <p className="font-['Tajawal'] text-xs text-[#4A473F] min-h-[1rem] mb-2">{getSpecialtyName(lawyer.specialty_id)}</p>
         <button
           onClick={function () { handleToggleSenior(lawyer) }}
-          className={"mt-2 px-3 py-1 rounded-full font-['Tajawal'] text-xs transition " + (lawyer.is_senior ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white text-[#4A473F] border border-[#D8D2C4] hover:border-[#AD8A4E]')}
+          className={"mt-auto px-3 py-1 rounded-full font-['Tajawal'] text-xs transition " + (lawyer.is_senior ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white text-[#4A473F] border border-[#D8D2C4] hover:border-[#AD8A4E]')}
         >
           {lawyer.is_senior ? '✓ محامي أقدم' : 'تعيين كمحامي أقدم'}
         </button>
@@ -361,10 +488,52 @@ export default function FirmDashboardPage() {
     )
   }
 
+  function renderProfileEditor() {
+    return (
+        <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
+          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">معلومات المكتب</h2>
+          <div className="space-y-3">
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نبذة عن المكتب</label>
+              <textarea value={profileBio} onChange={function (e) { setProfileBio(e.target.value) }} placeholder="نبذة عن المكتب" rows={3} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </div>
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">العنوان</label>
+              <input type="text" value={profileAddress} onChange={function (e) { setProfileAddress(e.target.value) }} placeholder="العنوان" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </div>
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">المدينة</label>
+              <input type="text" value={profileCity} onChange={function (e) { setProfileCity(e.target.value) }} placeholder="المدينة" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </div>
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رقم الهاتف</label>
+              <input type="tel" value={profilePhone} onChange={function (e) { setProfilePhone(e.target.value) }} placeholder="رقم الهاتف" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </div>
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">سنة التأسيس</label>
+              <input type="number" value={profileFoundedYear} onChange={function (e) { setProfileFoundedYear(e.target.value) }} placeholder="سنة التأسيس" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </div>
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رابط الخريطة (Google Maps)</label>
+              <input type="text" value={profileMapsLink} onChange={function (e) { setProfileMapsLink(e.target.value) }} placeholder="رابط الخريطة (Google Maps)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </div>
+            <div>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">الموقع الإلكتروني</label>
+              <input type="text" value={profileWebsite} onChange={function (e) { setProfileWebsite(e.target.value) }} placeholder="الموقع الإلكتروني" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </div>
+            <button onClick={handleSaveProfile} disabled={profileSaving} className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60">
+              {profileSaving ? 'جاري الحفظ...' : 'حفظ معلومات المكتب'}
+            </button>
+            {profileMessage && <p className={"font-['Tajawal'] text-sm " + (profileMessage.startsWith('تم') ? 'text-[#2F4538]' : 'text-[#7A2E2E]')}>{profileMessage}</p>}
+          </div>
+        </div>
+    )
+  }
+
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -380,9 +549,34 @@ export default function FirmDashboardPage() {
     )
   }
 
+  if (onboarding) {
+    return (
+      <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
+        <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+          <HeaderLines />
+          <div className="max-w-4xl mx-auto">
+            <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
+              <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
+              <button onClick={handleLogout} className="text-[#D8D2C4] hover:text-[#AD8A4E] transition">تسجيل الخروج</button>
+            </div>
+            <h1 className="font-['Tajawal'] font-bold text-4xl mb-2">أكمل معلومات المكتب</h1>
+            <div className="w-16 h-[2px] bg-[#AD8A4E]"></div>
+          </div>
+        </div>
+        <div className="max-w-4xl mx-auto px-6 py-10 flex-1 w-full">
+          <OnboardingSteps current={1} />
+          <p className="font-['Tajawal'] text-sm text-[#4A473F] text-center mb-6">أدخل مدينة المكتب وعنوانه ورقم هاتفه على الأقل، ثم اضغط «حفظ معلومات المكتب» لإرسال حسابك للمراجعة.</p>
+          {renderProfileEditor()}
+        </div>
+        <Footer variant="firm" />
+      </div>
+    )
+  }
+
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-4xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/">
@@ -435,6 +629,12 @@ export default function FirmDashboardPage() {
         </div>
       </div>
 
+      {reviewNeedsSenior.length > 0 && (
+        <a href="#review-consultations" className="block bg-[#1B1A17] text-[#F3EEE4] text-center py-3 px-6 font-['Tajawal'] text-sm hover:bg-[#2A2722] transition border-b border-[#AD8A4E]/40">
+          📝 {reviewNeedsSenior.length} إجابة بانتظار اختيار المحامي الأقدم الذي سيراجعها — اضغط هنا
+        </a>
+      )}
+
       {unassignedConsultations.length > 0 && (
         <a href="#unassigned-consultations" className="block bg-[#AD8A4E] text-white text-center py-3 px-6 font-['Tajawal'] text-sm hover:bg-[#c49b58] transition">
           ⚠️ لديك {unassignedConsultations.length} استشارة بانتظار الإحالة إلى محامي — اضغط هنا لمراجعتها
@@ -442,43 +642,7 @@ export default function FirmDashboardPage() {
       )}
 
       <div className="max-w-4xl mx-auto px-6 py-10 flex-1 w-full">
-        <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
-          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">معلومات المكتب</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نبذة عن المكتب</label>
-              <textarea value={profileBio} onChange={function (e) { setProfileBio(e.target.value) }} placeholder="نبذة عن المكتب" rows={3} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            </div>
-            <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">العنوان</label>
-              <input type="text" value={profileAddress} onChange={function (e) { setProfileAddress(e.target.value) }} placeholder="العنوان" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            </div>
-            <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">المدينة</label>
-              <input type="text" value={profileCity} onChange={function (e) { setProfileCity(e.target.value) }} placeholder="المدينة" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            </div>
-            <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رقم الهاتف</label>
-              <input type="tel" value={profilePhone} onChange={function (e) { setProfilePhone(e.target.value) }} placeholder="رقم الهاتف" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            </div>
-            <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">سنة التأسيس</label>
-              <input type="number" value={profileFoundedYear} onChange={function (e) { setProfileFoundedYear(e.target.value) }} placeholder="سنة التأسيس" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            </div>
-            <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رابط الخريطة (Google Maps)</label>
-              <input type="text" value={profileMapsLink} onChange={function (e) { setProfileMapsLink(e.target.value) }} placeholder="رابط الخريطة (Google Maps)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            </div>
-            <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">الموقع الإلكتروني</label>
-              <input type="text" value={profileWebsite} onChange={function (e) { setProfileWebsite(e.target.value) }} placeholder="الموقع الإلكتروني" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            </div>
-            <button onClick={handleSaveProfile} disabled={profileSaving} className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60">
-              {profileSaving ? 'جاري الحفظ...' : 'حفظ معلومات المكتب'}
-            </button>
-            {profileMessage && <p className="font-['Tajawal'] text-sm text-[#2F4538]">{profileMessage}</p>}
-          </div>
-        </div>
+        {renderProfileEditor()}
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <div className="flex justify-between items-center">
@@ -498,6 +662,33 @@ export default function FirmDashboardPage() {
           </div>
         </div>
 
+        {reviewConsultations.length > 0 && (
+          <div id="review-consultations" className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-6">
+            <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-1">إجابات بانتظار المراجعة ({reviewConsultations.length})</h2>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">لا تصل هذه الإجابات للعميل قبل أن يعتمدها المحامي الأقدم.</p>
+            {reviewConsultations.map(renderReviewItem)}
+          </div>
+        )}
+
+        <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
+          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-1">مهل الاستشارات</h2>
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">تُطبّق تلقائياً على كل استشارة جديدة، ويمكنك تعديل مهلة أي استشارة بمفردها من «المواعيد والاستشارات». ما يتجاوز المهلة يظهر باللون الأحمر لك وللمسؤول عنه.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <label className="block">
+              <span className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">الإجابة خلال (ساعة)</span>
+              <input type="number" min="1" max="720" value={answerHours} onChange={function (e) { setAnswerHours(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </label>
+            <label className="block">
+              <span className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">المراجعة خلال (ساعة)</span>
+              <input type="number" min="1" max="720" value={reviewHours} onChange={function (e) { setReviewHours(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            </label>
+          </div>
+          <button onClick={handleSaveDeadlines} disabled={deadlineSaving} className="px-5 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition disabled:opacity-60">
+            {deadlineSaving ? 'جاري الحفظ...' : 'حفظ المهل'}
+          </button>
+          {deadlineMessage && <p className="font-['Tajawal'] text-sm text-[#2F4538] mt-2">{deadlineMessage}</p>}
+        </div>
+
         {unassignedConsultations.length > 0 && (
           <div id="unassigned-consultations" className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
             <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">استشارات بانتظار الإحالة</h2>
@@ -507,7 +698,7 @@ export default function FirmDashboardPage() {
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-1">محامو المكتب</h2>
-          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">عند تعيين محامي أقدم واحد على الأقل، تنتظر إجابات باقي المحامين على الاستشارات مراجعة محامي أقدم تختاره من «المواعيد والاستشارات» قبل وصولها للعميل.</p>
+          <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">عند تعيين محامي أقدم واحد على الأقل، تنتظر إجابات باقي المحامين على الاستشارات مراجعة محامي أقدم قبل وصولها للعميل. إذا كان لديك محامي أقدم واحد تُسند المراجعة إليه تلقائياً، وإلا تختاره من «إجابات بانتظار المراجعة».</p>
           {roster.length === 0 && (
             <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-2">لم ينضم أي محامي بعد</p>
           )}

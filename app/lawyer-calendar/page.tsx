@@ -6,6 +6,8 @@ import { createClient } from '../lib/supabase'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import WorkspaceSwitch from '../components/WorkspaceSwitch'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
 
 type PersonalEvent = {
   id: number
@@ -205,6 +207,13 @@ export default function LawyerCalendarPage() {
     }
 
     loadData()
+
+    // Switching between firm work and private work reloads this page's data in place.
+    function onWorkspaceChange() { loadData() }
+    window.addEventListener('hm:workspace', onWorkspaceChange)
+    return function () {
+      window.removeEventListener('hm:workspace', onWorkspaceChange)
+    }
   }, [])
 
   async function handleLogout() {
@@ -498,7 +507,7 @@ export default function LawyerCalendarPage() {
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -534,7 +543,8 @@ export default function LawyerCalendarPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-2xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/">

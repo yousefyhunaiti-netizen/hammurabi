@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
+import HeaderLines from '../components/HeaderLines'
+import Loader from '../components/Loader'
 
 type JobPost = {
   id: number
@@ -25,6 +27,7 @@ type Application = {
   post_id: number
   lawyer_id: number
   note: string | null
+  status: string | null
 }
 
 type Person = {
@@ -59,6 +62,9 @@ export default function HiringPage() {
   const [pendingConsultations, setPendingConsultations] = useState(0)
 
   const [tab, setTab] = useState<'job' | 'training'>('job')
+  // all: every open opportunity; mine: what I posted and who applied; applied: where I applied
+  const [view, setView] = useState<'all' | 'mine' | 'applied'>('all')
+  const [statusBusyId, setStatusBusyId] = useState<number | null>(null)
   const [posts, setPosts] = useState<JobPost[]>([])
   const [applications, setApplications] = useState<Application[]>([])
   const [people, setPeople] = useState<Person[]>([])
@@ -136,6 +142,10 @@ export default function HiringPage() {
   useEffect(function () {
     async function loadData() {
       const tabParam = new URLSearchParams(window.location.search).get('tab')
+      const viewParam = new URLSearchParams(window.location.search).get('view')
+      if (viewParam === 'mine' || viewParam === 'applied') {
+        setView(viewParam)
+      }
       if (tabParam === 'training') {
         setTab('training')
         setFormType('training')
@@ -295,10 +305,34 @@ export default function HiringPage() {
     await loadBoard()
   }
 
+  // The poster answers an applicant: accepted or declined (the applicant sees it in «طلباتي»).
+  async function handleApplicationStatus(applicationId: number, status: 'accepted' | 'declined' | 'sent') {
+    setStatusBusyId(applicationId)
+    await supabase.rpc('set_application_status', { p_application_id: applicationId, p_status: status })
+    setStatusBusyId(null)
+    await loadBoard()
+  }
+
+  function applicationStatusLabel(status: string | null) {
+    if (status === 'accepted') return 'تم قبول طلبك ✓'
+    if (status === 'declined') return 'تم الاعتذار عن طلبك'
+    return 'قيد المراجعة'
+  }
+
+  function applicationStatusClass(status: string | null) {
+    if (status === 'accepted') return 'bg-[#D9E5DC] text-[#2F4538]'
+    if (status === 'declined') return 'bg-[#F2DEDC] text-[#7A2E2E]'
+    return 'bg-[#F0E6D2] text-[#8C6C35]'
+  }
+
   async function handleDeletePost(p: JobPost) {
     await supabase.from('job_posts').delete().eq('id', p.id)
     await loadBoard()
   }
+
+  const myPosts = posts.filter(isMine)
+
+  const appliedPosts = posts.filter(function (p) { return !isMine(p) && !!myApplication(p.id) })
 
   const visiblePosts = posts.filter(function (p) {
     if (p.post_type !== tab) return false
@@ -323,6 +357,17 @@ export default function HiringPage() {
           <p className="font-['Tajawal'] text-xs text-[#4A473F]">{formatDateDisplay(a.created_at)}</p>
         </div>
         {a.note && <p className="font-['Tajawal'] text-sm text-[#4A473F] mt-1 whitespace-pre-wrap">{a.note}</p>}
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <span className={"px-2 py-0.5 rounded-full font-['Tajawal'] text-[11px] font-bold " + applicationStatusClass(a.status)}>
+            {a.status === 'accepted' ? 'مقبول' : a.status === 'declined' ? 'تم الاعتذار' : 'جديد'}
+          </span>
+          {a.status !== 'accepted' && (
+            <button onClick={function () { handleApplicationStatus(a.id, 'accepted') }} disabled={statusBusyId === a.id} className="px-3 py-1 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-xs disabled:opacity-60">قبول</button>
+          )}
+          {a.status !== 'declined' && (
+            <button onClick={function () { handleApplicationStatus(a.id, 'declined') }} disabled={statusBusyId === a.id} className="px-3 py-1 bg-white text-[#7A2E2E] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs disabled:opacity-60">اعتذار</button>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2 mt-2">
           <a href={'/lawyers/' + a.lawyer_id} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white text-[#1B1A17] rounded-md font-['Tajawal'] text-xs">عرض الملف</a>
           {person && person.phone && <a href={'tel:' + person.phone} className="px-3 py-1.5 bg-white text-[#1B1A17] rounded-md font-['Tajawal'] text-xs" dir="ltr">📞 {person.phone}</a>}
@@ -347,7 +392,8 @@ export default function HiringPage() {
             <p className="font-['Tajawal'] text-sm text-[#4A473F]">{getPosterName(p)}</p>
           </div>
           <div className="flex flex-col items-end gap-1">
-            {mine && <span className="px-2 py-0.5 bg-[#1B1A17] text-[#F3EEE4] text-xs font-['Tajawal'] rounded-full whitespace-nowrap">منشورك</span>}
+            {view !== 'all' && <span className="px-2 py-0.5 bg-[#F0E6D2] text-[#8C6C35] text-xs font-['Tajawal'] rounded-full whitespace-nowrap">{p.post_type === 'training' ? 'تدريب' : 'فرصة عمل'}</span>}
+            {mine && view === 'all' && <span className="px-2 py-0.5 bg-[#1B1A17] text-[#F3EEE4] text-xs font-['Tajawal'] rounded-full whitespace-nowrap">منشورك</span>}
             {!p.is_open && <span className="px-2 py-0.5 bg-[#D8D2C4] text-[#4A473F] text-xs font-['Tajawal'] rounded-full whitespace-nowrap">مغلقة</span>}
           </div>
         </div>
@@ -376,9 +422,12 @@ export default function HiringPage() {
         )}
 
         {!mine && mineApplication && (
-          <div className="flex items-center gap-3">
-            <span className="font-['Tajawal'] text-sm text-[#2F4538] font-bold">✓ تم التقديم</span>
-            <button onClick={function () { handleWithdraw(mineApplication.id) }} disabled={applyBusy} className="font-['Tajawal'] text-xs text-[#7A2E2E]">سحب الطلب</button>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-['Tajawal'] text-sm text-[#2F4538] font-bold">✓ تم التقديم في {formatDateDisplay(mineApplication.created_at)}</span>
+            <span className={"px-2.5 py-0.5 rounded-full font-['Tajawal'] text-xs font-bold " + applicationStatusClass(mineApplication.status)}>{applicationStatusLabel(mineApplication.status)}</span>
+            {mineApplication.status !== 'accepted' && (
+              <button onClick={function () { handleWithdraw(mineApplication.id) }} disabled={applyBusy} className="font-['Tajawal'] text-xs text-[#7A2E2E]">سحب الطلب</button>
+            )}
           </div>
         )}
 
@@ -408,7 +457,7 @@ export default function HiringPage() {
   if (loading) {
     return (
       <div dir="rtl" className="min-h-screen pattern-bg flex items-center justify-center">
-        <p className="font-['Tajawal'] text-[#4A473F]">جاري التحميل...</p>
+        <Loader />
       </div>
     )
   }
@@ -426,7 +475,8 @@ export default function HiringPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+        <HeaderLines />
         <div className="max-w-3xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
@@ -474,6 +524,50 @@ export default function HiringPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-10 flex-1 w-full">
+        <div className="flex flex-wrap gap-2 mb-6 border-b border-[#D8D2C4]">
+          {[
+            { key: 'all', label: 'كل الفرص' },
+            { key: 'mine', label: 'منشوراتي (' + myPosts.length + ')' },
+          ].concat(accountType === 'lawyer' ? [{ key: 'applied', label: 'طلباتي (' + appliedPosts.length + ')' }] : []).map(function (v) {
+            const on = view === v.key
+            return (
+              <button
+                key={v.key}
+                onClick={function () { setView(v.key as 'all' | 'mine' | 'applied') }}
+                className={"relative px-4 pb-3 pt-1 font-['Tajawal'] text-sm font-bold transition " + (on ? 'text-[#1B1A17]' : 'text-[#4A473F] hover:text-[#AD8A4E]')}
+              >
+                {v.label}
+                <span className={"absolute right-0 left-0 -bottom-px h-[3px] rounded-full bg-[#AD8A4E] transition-transform duration-300 origin-center " + (on ? 'scale-x-100' : 'scale-x-0')}></span>
+              </button>
+            )
+          })}
+        </div>
+
+        {view === 'mine' && (
+          <div>
+            <div className="flex justify-between items-center gap-3 mb-5">
+              <p className="font-['Tajawal'] text-sm text-[#4A473F]">الفرص التي نشرتها ومن تقدّم إليها</p>
+              <button onClick={function () { resetForm(); setFormType(tab); setView('all'); setShowForm(true) }} className="px-5 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm">+ نشر فرصة</button>
+            </div>
+            {myPosts.length === 0 && (
+              <p className="font-['Tajawal'] text-center text-[#4A473F]">لم تنشر أي فرصة بعد</p>
+            )}
+            {myPosts.map(renderPost)}
+          </div>
+        )}
+
+        {view === 'applied' && (
+          <div>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-5">الفرص التي تقدّمت إليها وحالة كل طلب</p>
+            {appliedPosts.length === 0 && (
+              <p className="font-['Tajawal'] text-center text-[#4A473F]">لم تتقدم لأي فرصة بعد</p>
+            )}
+            {appliedPosts.map(renderPost)}
+          </div>
+        )}
+
+        {view === 'all' && (
+        <div>
         <div className="flex flex-wrap justify-between items-center gap-3 mb-5">
           <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 w-fit">
             <button onClick={function () { setTab('job') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (tab === 'job' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
@@ -525,6 +619,8 @@ export default function HiringPage() {
         )}
 
         {visiblePosts.map(renderPost)}
+        </div>
+        )}
       </div>
 
       <Footer variant={accountType === 'firm' ? 'firm' : 'lawyer'} />
