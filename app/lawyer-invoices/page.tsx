@@ -9,6 +9,7 @@ import WorkspaceSwitch from '../components/WorkspaceSwitch'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { currencyOf, currencyLabel, isInternational } from '../lib/international'
 
 type Invoice = {
   id: number
@@ -53,6 +54,8 @@ export default function LawyerInvoicesPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [accountType, setAccountType] = useState<'lawyer' | 'firm'>('lawyer')
+  const [cur, setCur] = useState('د.أ')
+  const [abroad, setAbroad] = useState(false)
   const [accountId, setAccountId] = useState<number | null>(null)
   const [lawyerFullName, setLawyerFullName] = useState('')
   const [notAllowed, setNotAllowed] = useState(false)
@@ -209,9 +212,11 @@ export default function LawyerInvoicesPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, full_name, is_active, is_comped, savings_goal_percent').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, full_name, is_active, is_comped, savings_goal_percent, country').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
+        setCur(currencyLabel(currencyOf(lawyerResult.data.country)))
+        setAbroad(isInternational(lawyerResult.data.country))
         if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
           setNotSubscribed(true)
           setLoading(false)
@@ -234,6 +239,11 @@ export default function LawyerInvoicesPage() {
       }
 
       const firmResult = await supabase.from('firms').select('*').eq('user_id', userId).maybeSingle()
+
+      if (firmResult.data) {
+        setCur(currencyLabel(currencyOf(firmResult.data.country)))
+        setAbroad(isInternational(firmResult.data.country))
+      }
 
       if (!firmResult.data) {
         setNotAllowed(true)
@@ -671,7 +681,7 @@ export default function LawyerInvoicesPage() {
         {accountType === 'firm' && (
           <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-1">المحامي: {getLawyerName(invoice.lawyer_id)}</p>
         )}
-        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">المبلغ: {invoice.amount} د.أ</p>
+        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">المبلغ: {invoice.amount} {cur}</p>
         {invoice.due_date && <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-3">تاريخ الاستحقاق: {formatDateDisplay(invoice.due_date)}</p>}
         {accountType === 'lawyer' && invoice.status !== 'paid' && (
           <button onClick={paidClick} className="px-3 py-2 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-xs">تحديد كمدفوعة</button>
@@ -700,7 +710,7 @@ export default function LawyerInvoicesPage() {
           {accountType === 'firm' && (
             <p className="font-['Tajawal'] text-xs text-[#AD8A4E]">المحامي: {getLawyerName(e.lawyer_id)}</p>
           )}
-          <p className="font-['Tajawal'] text-xs text-[#4A473F]">{e.amount} د.أ — {formatDateDisplay(e.expense_date)}</p>
+          <p className="font-['Tajawal'] text-xs text-[#4A473F]">{e.amount} {cur} — {formatDateDisplay(e.expense_date)}</p>
           {e.notes && <p className="font-['Tajawal'] text-xs text-[#4A473F]">{e.notes}</p>}
         </div>
         {accountType === 'lawyer' && (
@@ -839,15 +849,15 @@ export default function LawyerInvoicesPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-4 text-center">
             <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">الإيرادات</p>
-            <p className="font-['Tajawal'] font-bold text-lg text-[#2F4538]">{periodRevenue} د.أ</p>
+            <p className="font-['Tajawal'] font-bold text-lg text-[#2F4538]">{periodRevenue} {cur}</p>
           </div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-4 text-center">
             <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">المصاريف</p>
-            <p className="font-['Tajawal'] font-bold text-lg text-[#7A2E2E]">{periodExpenses} د.أ</p>
+            <p className="font-['Tajawal'] font-bold text-lg text-[#7A2E2E]">{periodExpenses} {cur}</p>
           </div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-4 text-center">
             <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">صافي الربح</p>
-            <p className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{netProfit} د.أ</p>
+            <p className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">{netProfit} {cur}</p>
           </div>
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-4 text-center">
             <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">هامش الربح</p>
@@ -890,12 +900,12 @@ export default function LawyerInvoicesPage() {
               }
 
               const senderLine = lawyerFullName ? 'معك مكتب المحامي ' + lawyerFullName + '. ' : ''
-              const message = 'مرحباً ' + inv.client_name + '، ' + senderLine + 'هذا تذكير بخصوص فاتورة بمبلغ ' + inv.amount + ' د.أ مستحقة منذ ' + formatDateDisplay(inv.due_date) + '. نرجو التكرم بالسداد في أقرب وقت ممكن. شكراً لكم.'
+              const message = 'مرحباً ' + inv.client_name + '، ' + senderLine + 'هذا تذكير بخصوص فاتورة بمبلغ ' + inv.amount + ' ' + cur + ' مستحقة منذ ' + formatDateDisplay(inv.due_date) + '. نرجو التكرم بالسداد في أقرب وقت ممكن. شكراً لكم.'
               const whatsappLink = inv.client_phone ? 'https://wa.me/' + normalizePhone(inv.client_phone) + '?text=' + encodeURIComponent(message) : ''
 
               return (
                 <div key={inv.id} className="flex justify-between items-center py-2 border-b border-[#e5c9c9] last:border-0">
-                  <p className="font-['Tajawal'] text-sm text-[#7A2E2E]">{inv.client_name} — {inv.amount} د.أ (استحقت {formatDateDisplay(inv.due_date)})</p>
+                  <p className="font-['Tajawal'] text-sm text-[#7A2E2E]">{inv.client_name} — {inv.amount} {cur} (استحقت {formatDateDisplay(inv.due_date)})</p>
                   {accountType === 'firm' ? (
                     <span className="font-['Tajawal'] text-xs text-[#4A473F]">{getLawyerName(inv.lawyer_id)}</span>
                   ) : whatsappLink ? (
@@ -925,7 +935,7 @@ export default function LawyerInvoicesPage() {
                     <span className="text-[#1B1A17] truncate">{entry[0]}</span>
                   </div>
                   <div className="flex-shrink-0">
-                    <span className="text-[#2F4538] font-bold">{entry[1]} د.أ</span>
+                    <span className="text-[#2F4538] font-bold">{entry[1]} {cur}</span>
                     <span dir="ltr" className="inline-block text-xs text-[#4A473F] mr-1">({share.toFixed(0)}%)</span>
                   </div>
                 </div>
@@ -967,8 +977,8 @@ export default function LawyerInvoicesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
             {renderIndicator(
               'المبلغ غير المحصّل',
-              scopedUnpaidTotal + ' د.أ',
-              'فواتير صدرت ' + scopeHint + ' ولم تُدفع بعد' + (scopedOverdueTotal > 0 ? '، منها ' + scopedOverdueTotal + ' د.أ متأخرة عن موعدها' : '')
+              scopedUnpaidTotal + ' ' + cur,
+              'فواتير صدرت ' + scopeHint + ' ولم تُدفع بعد' + (scopedOverdueTotal > 0 ? '، منها ' + scopedOverdueTotal + ' ' + cur + ' متأخرة عن موعدها' : '')
             )}
             {renderIndicator(
               'نسبة التحصيل',
@@ -982,42 +992,42 @@ export default function LawyerInvoicesPage() {
             )}
             {renderIndicator(
               'متوسط قيمة الفاتورة',
-              avgInvoiceValue !== null ? avgInvoiceValue.toFixed(0) + ' د.أ' : '-',
+              avgInvoiceValue !== null ? avgInvoiceValue.toFixed(0) + ' ' + cur : '-',
               'إجمالي الفواتير الصادرة ' + scopeHint + ' مقسوماً على عددها'
             )}
 
             {indicatorScope === 'month' && renderIndicator(
               'مقارنة بالشهر السابق',
               formatChange(scopeChange),
-              'إيراداتك في ' + monthNames[indicatorMonth] + ' (' + scopeRevenue + ' د.أ) مقابل ' + monthNames[prevMonthIndex] + ' (' + previousScopeRevenue + ' د.أ)',
+              'إيراداتك في ' + monthNames[indicatorMonth] + ' (' + scopeRevenue + ' ' + cur + ') مقابل ' + monthNames[prevMonthIndex] + ' (' + previousScopeRevenue + ' ' + cur + ')',
               changeColor(scopeChange)
             )}
             {indicatorScope === 'year' && renderIndicator(
               'مقارنة بالسنة السابقة',
               formatChange(scopeChange),
-              indicatorYear + ': ' + scopeRevenue + ' د.أ مقابل ' + (indicatorYear - 1) + ': ' + previousScopeRevenue + ' د.أ',
+              indicatorYear + ': ' + scopeRevenue + ' ' + cur + ' مقابل ' + (indicatorYear - 1) + ': ' + previousScopeRevenue + ' ' + cur,
               changeColor(scopeChange)
             )}
             {indicatorScope === 'all' && renderIndicator(
               'إجمالي الإيرادات',
-              totalPaidAll + ' د.أ',
+              totalPaidAll + ' ' + cur,
               'مجموع كل ما دُفع لك من الفواتير'
             )}
 
             {indicatorScope === 'month' && renderIndicator(
               'مقارنة بنفس الشهر من العام الماضي',
               formatChange(sameMonthChange),
-              monthNames[indicatorMonth] + ' ' + indicatorYear + ': ' + scopeRevenue + ' د.أ مقابل ' + (indicatorYear - 1) + ': ' + sameMonthLastYearRevenue + ' د.أ',
+              monthNames[indicatorMonth] + ' ' + indicatorYear + ': ' + scopeRevenue + ' ' + cur + ' مقابل ' + (indicatorYear - 1) + ': ' + sameMonthLastYearRevenue + ' ' + cur,
               changeColor(sameMonthChange)
             )}
             {indicatorScope === 'year' && renderIndicator(
               'متوسط الإيراد الشهري',
-              scopeRevenue > 0 ? monthlyAverage.toFixed(0) + ' د.أ' : '-',
+              scopeRevenue > 0 ? monthlyAverage.toFixed(0) + ' ' + cur : '-',
               'إيراد السنة مقسوماً على ' + monthsCounted + ' شهر'
             )}
             {indicatorScope === 'all' && renderIndicator(
               'متوسط الإيراد الشهري',
-              scopeRevenue > 0 ? monthlyAverage.toFixed(0) + ' د.أ' : '-',
+              scopeRevenue > 0 ? monthlyAverage.toFixed(0) + ' ' + cur : '-',
               'منذ أول دفعة استلمتها (' + monthsCounted + ' شهر)'
             )}
           </div>
@@ -1049,11 +1059,11 @@ export default function LawyerInvoicesPage() {
               <div>
                 <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">حساب شهر {monthNames[selectedMonth]} {selectedYear}</p>
                 <div className="border border-[#D8D2C4] rounded-md px-4 mb-4">
-                  {renderSavingsRow('الإيرادات', monthRevenue + ' د.أ')}
-                  {renderSavingsRow('المصاريف', '- ' + monthExpenses + ' د.أ')}
-                  {renderSavingsRow('صافي الربح', monthNet + ' د.أ', true)}
+                  {renderSavingsRow('الإيرادات', monthRevenue + ' ' + cur)}
+                  {renderSavingsRow('المصاريف', '- ' + monthExpenses + ' ' + cur)}
+                  {renderSavingsRow('صافي الربح', monthNet + ' ' + cur, true)}
                   {renderSavingsRow('نسبة الادخار', savingsPct + '%')}
-                  {renderSavingsRow('المبلغ المقترح ادخاره هذا الشهر', monthSavings.toFixed(0) + ' د.أ', true)}
+                  {renderSavingsRow('المبلغ المقترح ادخاره هذا الشهر', monthSavings.toFixed(0) + ' ' + cur, true)}
                 </div>
 
                 {monthNet <= 0 ? (
@@ -1062,19 +1072,19 @@ export default function LawyerInvoicesPage() {
                   <div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                       <div className="bg-[#F3EEE4] rounded-md p-3 text-center">
-                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{dailySavings.toFixed(1)} د.أ</p>
+                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{dailySavings.toFixed(1)} {cur}</p>
                         <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-1">يومياً</p>
                       </div>
                       <div className="bg-[#F3EEE4] rounded-md p-3 text-center">
-                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{monthSavings.toFixed(0)} د.أ</p>
+                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{monthSavings.toFixed(0)} {cur}</p>
                         <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-1">شهرياً</p>
                       </div>
                       <div className="bg-[#F3EEE4] rounded-md p-3 text-center">
-                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{(monthSavings * 6).toFixed(0)} د.أ</p>
+                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{(monthSavings * 6).toFixed(0)} {cur}</p>
                         <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-1">خلال 6 أشهر</p>
                       </div>
                       <div className="bg-[#F3EEE4] rounded-md p-3 text-center">
-                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{(monthSavings * 12).toFixed(0)} د.أ</p>
+                        <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{(monthSavings * 12).toFixed(0)} {cur}</p>
                         <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-1">خلال سنة</p>
                       </div>
                     </div>
@@ -1082,7 +1092,7 @@ export default function LawyerInvoicesPage() {
                     <div className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-4">
                       <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">ماذا تفعل؟</p>
                       <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed">
-                        في نهاية الشهر، بعد تحصيل فواتيرك، حوّل <strong>{monthSavings.toFixed(0)} د.أ</strong> إلى حساب ادخار منفصل. وإن فضّلت الادخار اليومي فخصّص نحو <strong>{dailySavings.toFixed(1)} د.أ</strong> كل يوم.
+                        في نهاية الشهر، بعد تحصيل فواتيرك، حوّل <strong>{monthSavings.toFixed(0)} {cur}</strong> إلى حساب ادخار منفصل. وإن فضّلت الادخار اليومي فخصّص نحو <strong>{dailySavings.toFixed(1)} {cur}</strong> كل يوم.
                       </p>
                     </div>
                   </div>
@@ -1138,7 +1148,7 @@ export default function LawyerInvoicesPage() {
             <div className="space-y-3">
               <input type="text" value={clientName} onChange={function (e) { setClientName(e.target.value) }} placeholder="اسم العميل" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
               <input type="tel" value={clientPhone} onChange={function (e) { setClientPhone(e.target.value) }} placeholder="رقم هاتف العميل (لإرسال تذكير واتساب)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-              <input type="number" value={amount} onChange={function (e) { setAmount(e.target.value) }} placeholder="المبلغ (د.أ)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <input type="number" value={amount} onChange={function (e) { setAmount(e.target.value) }} placeholder={'المبلغ (' + cur + ')'} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
               <div>
                 <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">تاريخ الاستحقاق (يوم / شهر / سنة) — اختياري</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -1150,10 +1160,10 @@ export default function LawyerInvoicesPage() {
               <button onClick={handleAddInvoice} disabled={savingInvoice} className="w-full py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition disabled:opacity-60">
                 {savingInvoice ? 'جاري الإنشاء...' : 'إنشاء فاتورة'}
               </button>
-              <p className="font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed">
+              {!abroad && <p className="font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed">
                 هذه فاتورة لمتابعة مستحقاتك داخل حمورابي. لإصدار فاتورة ضريبية رسمية، استخدم{' '}
                 <a href="https://portal.jofotara.gov.jo/ar" target="_blank" rel="noopener noreferrer" className="text-[#AD8A4E] underline">نظام الفوترة الوطني (جوفوترة)</a>.
-              </p>
+              </p>}
             </div>
           </div>
         )}

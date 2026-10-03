@@ -8,6 +8,7 @@ import Footer from '../components/Footer'
 import Notifications, { OverdueAlert } from '../components/Notifications'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { appointmentTimeText, formatMoney } from '../lib/international'
 
 type Appointment = {
   id: number
@@ -20,6 +21,7 @@ type Appointment = {
   status: string
   consultation_type: string | null
   created_at: string
+  timezone: string | null
 }
 
 type Consultation = {
@@ -35,6 +37,7 @@ type Consultation = {
   created_at: string
   reviewer_id: number | null
   review_target: string | null
+  currency: string | null
   answer_due_at: string | null
   review_due_at: string | null
 }
@@ -599,7 +602,10 @@ export default function LawyerHistoryPage() {
             <span className="px-2 py-0.5 bg-[#AD8A4E] text-white text-[10px] font-['Tajawal'] rounded-full">جديد</span>
           )}
         </div>
-        <p className="font-['Tajawal'] text-xs text-[#4A473F]">{formatDateDisplay(a.appointment_date)} - {a.time_slot} ({typeLabel})</p>
+        <p className="font-['Tajawal'] text-xs text-[#4A473F]">{appointmentTimeText(a.appointment_date, a.time_slot, a.timezone).main} ({typeLabel})</p>
+        {appointmentTimeText(a.appointment_date, a.time_slot, a.timezone).note && (
+          <p className="font-['Tajawal'] text-[11px] text-[#8A8474]">{appointmentTimeText(a.appointment_date, a.time_slot, a.timezone).note}</p>
+        )}
         {accountType === 'firm' && (
           <p className="font-['Tajawal'] text-xs text-[#4A473F] mt-1">{getAppOwnerLabel(a)}</p>
         )}
@@ -704,7 +710,7 @@ export default function LawyerHistoryPage() {
                 placeholder="اكتب إجابتك هنا..."
                 className="w-full px-3 py-2 mb-3 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
               />
-              <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">المبلغ المطلوب من العميل (دينار أردني)</p>
+              <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">المبلغ المطلوب من العميل ({c.currency === 'USD' ? 'دولار أمريكي' : 'دينار أردني'})</p>
               <input
                 type="number"
                 min="0"
@@ -746,7 +752,7 @@ export default function LawyerHistoryPage() {
             <div className="bg-[#2F4538] text-white rounded-md p-4">
               <p className="font-['Tajawal'] font-bold text-sm mb-2">الإجابة المرسلة</p>
               <p className="font-['Tajawal'] text-sm leading-relaxed whitespace-pre-wrap mb-3">{c.answer}</p>
-              <p className="font-['Tajawal'] text-xs text-[#D8D2C4]">المبلغ: {c.fee || 0} دينار{c.status === 'paid' ? ' - مدفوعة' : ' - بانتظار الدفع'}</p>
+              <p className="font-['Tajawal'] text-xs text-[#D8D2C4]">المبلغ: {formatMoney(c.fee || 0, c.currency)}{c.status === 'paid' ? ' - مدفوعة' : ' - بانتظار الدفع'}</p>
             </div>
           )}
 
@@ -773,7 +779,7 @@ export default function LawyerHistoryPage() {
               />
               {!reviewIsMeeting && (
                 <div>
-                  <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">المبلغ المطلوب من العميل (دينار أردني)</p>
+                  <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-2">المبلغ المطلوب من العميل ({c.currency === 'USD' ? 'دولار أمريكي' : 'دينار أردني'})</p>
                   <input
                     type="number"
                     min="0"

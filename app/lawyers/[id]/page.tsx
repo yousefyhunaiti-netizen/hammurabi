@@ -8,6 +8,7 @@ import { safeLink } from '../../lib/safeLink'
 import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
 import HeaderLines from '../../components/HeaderLines'
 import Loader from '../../components/Loader'
+import { countryName, languageName, isInternational, currencyOf, formatMoney, todayIn, inViewerZone, zoneLabel, HOME_TIMEZONE } from '../../lib/international'
 
 type Lawyer = {
   id: number
@@ -30,6 +31,9 @@ type Lawyer = {
   google_maps_link: string | null
   website_url: string | null
   photo_url: string | null
+  country: string | null
+  timezone: string | null
+  languages: string[] | null
 }
 
 type Specialty = {
@@ -124,7 +128,9 @@ export default function LawyerDetailPage() {
         const vacationUntil = lawyerResult.data.vacation_until
 
         const dates: string[] = []
-        const today = new Date()
+        // days are counted in the lawyer's own time zone
+        const todayParts = todayIn(lawyerResult.data.timezone || HOME_TIMEZONE).split('-').map(Number)
+        const today = new Date(todayParts[0], todayParts[1] - 1, todayParts[2])
         let daysChecked = 0
         let daysFound = 0
 
@@ -205,6 +211,16 @@ export default function LawyerDetailPage() {
     if (!lawyer) return ''
     if (lawyer.cities) return lawyer.cities.split(',').filter(Boolean).join('، ')
     return lawyer.city || ''
+  }
+
+  const lawyerZone = lawyer && lawyer.timezone ? lawyer.timezone : HOME_TIMEZONE
+  const currency = currencyOf(lawyer ? lawyer.country : null)
+
+  // a slot written in the lawyer's time, shown in the visitor's own time
+  function slotInfo(slot: string) {
+    if (!selectedDate) return { label: slot, past: false, otherDay: false, viewerDate: '', same: true }
+    const v = inViewerZone(selectedDate, slot, lawyerZone)
+    return { label: v.time, past: v.instant.getTime() < Date.now(), otherDay: v.date !== selectedDate, viewerDate: v.dateDisplay, same: v.sameAsSource }
   }
 
   function formatDayButton(dateStr: string) {
@@ -377,11 +393,12 @@ export default function LawyerDetailPage() {
             <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">التفاصيل</h2>
             <div className="grid grid-cols-2 gap-4 font-['Tajawal'] text-sm mb-4">
               <div><p className="text-[#4A473F]">سنوات الخبرة</p><p className="text-[#1B1A17] font-medium">{lawyer.years_experience || 0}</p></div>
-              <div><p className="text-[#4A473F]">الرقم النقابي</p><p className="text-[#1B1A17] font-medium">{lawyer.bar_certificate_number || '-'}</p></div>
-              <div><p className="text-[#4A473F]">المدينة</p><p className="text-[#1B1A17] font-medium">{getAllCities()}</p></div>
+              <div><p className="text-[#4A473F]">{isInternational(lawyer.country) ? 'رقم الترخيص' : 'الرقم النقابي'}</p><p className="text-[#1B1A17] font-medium">{lawyer.bar_certificate_number || '-'}</p></div>
+              <div><p className="text-[#4A473F]">المدينة</p><p className="text-[#1B1A17] font-medium">{isInternational(lawyer.country) ? countryName(lawyer.country) + (getAllCities() ? '، ' + getAllCities() : '') : getAllCities()}</p></div>
+              <div><p className="text-[#4A473F]">لغات العمل</p><p className="text-[#1B1A17] font-medium">{(lawyer.languages && lawyer.languages.length > 0 ? lawyer.languages : ['ar']).map(languageName).join('، ')}</p></div>
               <div><p className="text-[#4A473F]">العنوان</p><p className="text-[#1B1A17] font-medium">{lawyer.address || '-'}</p></div>
               {lawyer.hourly_rate_range && (
-                <div><p className="text-[#4A473F]">نطاق الأجرة بالساعة</p><p className="text-[#1B1A17] font-medium">{lawyer.hourly_rate_range} د.أ</p></div>
+                <div><p className="text-[#4A473F]">نطاق الأجرة بالساعة</p><p className="text-[#1B1A17] font-medium">{lawyer.hourly_rate_range} {currency === 'USD' ? '$' : 'د.أ'}</p></div>
               )}
             </div>
             <div className="flex flex-wrap gap-2 pt-4 border-t border-[#D8D2C4]">
@@ -412,7 +429,7 @@ export default function LawyerDetailPage() {
 
             <div className="mb-4 pb-4 border-b border-[#D8D2C4]">
               <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">رسوم الاستشارة السريعة</p>
-              <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-2">{lawyer.consultation_fee ? lawyer.consultation_fee + ' د.أ' : 'غير محدد'}</p>
+              <p className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-2">{lawyer.consultation_fee ? formatMoney(lawyer.consultation_fee, currency) : 'غير محدد'}</p>
               <ConsultationFeeNote />
             </div>
 
@@ -436,14 +453,19 @@ export default function LawyerDetailPage() {
 
             <div className="grid grid-cols-2 gap-2 mb-3">
               {timeSlots.map(function (slot) {
-                const isBooked = bookedSlots.indexOf(slot) !== -1
+                const info = slotInfo(slot)
+                const isBooked = bookedSlots.indexOf(slot) !== -1 || info.past
                 return (
-                  <button key={slot} disabled={isBooked || bookingLoading} onClick={function () { handleBookSlot(slot) }} className={"px-3 py-2 rounded-md font-['Tajawal'] text-sm transition " + (isBooked ? 'bg-[#E5E0D5] text-[#B0AA9C] cursor-not-allowed line-through' : 'bg-[#F3EEE4] text-[#1B1A17] hover:bg-[#AD8A4E] hover:text-white border border-[#D8D2C4]')}>
-                    {slot}
+                  <button key={slot} disabled={isBooked || bookingLoading} onClick={function () { handleBookSlot(slot) }} title={info.same ? '' : slot + ' بتوقيت المحامي'} className={"px-3 py-2 rounded-md font-['Tajawal'] text-sm transition " + (isBooked ? 'bg-[#E5E0D5] text-[#B0AA9C] cursor-not-allowed line-through' : 'bg-[#F3EEE4] text-[#1B1A17] hover:bg-[#AD8A4E] hover:text-white border border-[#D8D2C4]')}>
+                    {info.label}
+                    {info.otherDay && <span className="block text-[10px] opacity-70">{info.viewerDate}</span>}
                   </button>
                 )
               })}
             </div>
+            {timeSlots.length > 0 && !slotInfo(timeSlots[0]).same && (
+              <p className="font-['Tajawal'] text-[11px] text-[#4A473F] mb-3">الأوقات معروضة بتوقيتك. المحامي يعمل بتوقيت {zoneLabel(lawyerZone)}.</p>
+            )}
 
             {bookingMessage && <p className="font-['Tajawal'] text-sm text-[#2F4538] mb-3">{bookingMessage}</p>}
 

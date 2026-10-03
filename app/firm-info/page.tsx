@@ -8,6 +8,7 @@ import Footer from '../components/Footer'
 import DeleteAccount from '../components/DeleteAccount'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { countryName, languageName, zoneLabel } from '../lib/international'
 
 type Firm = {
   id: number
@@ -21,6 +22,9 @@ type Firm = {
   website_url: string | null
   show_lawyer_names: boolean | null
   founded_year: number | null
+  country: string | null
+  timezone: string | null
+  languages: string[] | null
 }
 
 export default function FirmInfoPage() {
@@ -190,6 +194,18 @@ export default function FirmInfoPage() {
             <div>
               <p className="text-[#4A473F] mb-1">المدينة</p>
               <p className="text-[#1B1A17] font-medium">{firm.city || '-'}</p>
+            </div>
+            <div>
+              <p className="text-[#4A473F] mb-1">الدولة</p>
+              <p className="text-[#1B1A17] font-medium">{countryName(firm.country)}</p>
+            </div>
+            <div>
+              <p className="text-[#4A473F] mb-1">المنطقة الزمنية</p>
+              <p className="text-[#1B1A17] font-medium">{zoneLabel(firm.timezone)}</p>
+            </div>
+            <div>
+              <p className="text-[#4A473F] mb-1">لغات العمل</p>
+              <p className="text-[#1B1A17] font-medium">{(firm.languages && firm.languages.length > 0 ? firm.languages : ['ar']).map(languageName).join('، ')}</p>
             </div>
             <div className="col-span-2">
               <p className="text-[#4A473F] mb-1">العنوان</p>

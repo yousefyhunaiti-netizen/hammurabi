@@ -39,7 +39,7 @@ export default function LoginPage() {
 
     // New lawyers and firms go to the sign-up step they're on
     // (info → review → subscription); everyone else to their tools.
-    const lawyerResult = await supabase.from('lawyers').select('id, needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped').eq('user_id', user.id).maybeSingle()
+    const lawyerResult = await supabase.from('lawyers').select('id, needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url').eq('user_id', user.id).maybeSingle()
     if (lawyerResult.data) {
       setLoading(false)
       router.push(stagePath('lawyer', lawyerStage(lawyerResult.data as any)))

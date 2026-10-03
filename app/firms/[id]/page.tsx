@@ -8,6 +8,7 @@ import { safeLink } from '../../lib/safeLink'
 import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
 import HeaderLines from '../../components/HeaderLines'
 import Loader from '../../components/Loader'
+import { countryName, languageName, isInternational, todayIn, inViewerZone, zoneLabel, HOME_TIMEZONE } from '../../lib/international'
 
 type Firm = {
   id: number
@@ -21,6 +22,9 @@ type Firm = {
   website_url: string | null
   show_lawyer_names: boolean | null
   founded_year: number | null
+  country: string | null
+  timezone: string | null
+  languages: string[] | null
 }
 
 type Specialty = {
@@ -45,6 +49,7 @@ type FirmLawyer = {
   working_hours_start: string | null
   working_hours_end: string | null
   vacation_until: string | null
+  timezone: string | null
 }
 
 const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
@@ -132,7 +137,7 @@ export default function FirmDetailPage() {
 
       const rosterResult = await supabase
         .from('lawyers')
-        .select('id, full_name, specialty_id, city, years_experience, consultation_fee, working_days, working_hours_start, working_hours_end, vacation_until')
+        .select('id, full_name, specialty_id, city, years_experience, consultation_fee, working_days, working_hours_start, working_hours_end, vacation_until, timezone')
         .eq('firm_id', firmId)
 
       setRoster(rosterResult.data || [])
@@ -142,9 +147,29 @@ export default function FirmDetailPage() {
     loadData()
   }, [firmId])
 
+  // the time zone a booking here is made in: the chosen lawyer's, or the firm's
+  function bookingZone() {
+    if (firm && firm.show_lawyer_names && selectedLawyerId) {
+      const l = roster.find(function (x) { return String(x.id) === selectedLawyerId })
+      if (l && l.timezone) return l.timezone
+    }
+    return firm && firm.timezone ? firm.timezone : HOME_TIMEZONE
+  }
+
+  function startOfToday(timeZone: string) {
+    const parts = todayIn(timeZone).split('-').map(Number)
+    return new Date(parts[0], parts[1] - 1, parts[2])
+  }
+
+  function slotInfo(slot: string) {
+    if (!selectedDate) return { label: slot, past: false, otherDay: false, viewerDate: '', same: true }
+    const v = inViewerZone(selectedDate, slot, bookingZone())
+    return { label: v.time, past: v.instant.getTime() < Date.now(), otherDay: v.date !== selectedDate, viewerDate: v.dateDisplay, same: v.sameAsSource }
+  }
+
   function buildGenericDates() {
     const dates: string[] = []
-    const today = new Date()
+    const today = startOfToday(firm && firm.timezone ? firm.timezone : HOME_TIMEZONE)
     let daysChecked = 0
     let daysFound = 0
 
@@ -171,7 +196,7 @@ export default function FirmDetailPage() {
     const vacationUntil = lawyer.vacation_until
 
     const dates: string[] = []
-    const today = new Date()
+    const today = startOfToday(lawyer.timezone || HOME_TIMEZONE)
     let daysChecked = 0
     let daysFound = 0
 
@@ -469,7 +494,10 @@ export default function FirmDetailPage() {
             </div>
             <div>
               <h1 className="font-['Tajawal'] font-bold text-3xl md:text-4xl mb-1">{firm.firm_name}</h1>
-              <p className="font-['Tajawal'] text-[#AD8A4E]">مكتب محاماة{firm.city ? ' - ' + firm.city : ''}</p>
+              <p className="font-['Tajawal'] text-[#AD8A4E]">مكتب محاماة{isInternational(firm.country) ? ' - ' + countryName(firm.country) : ''}{firm.city ? ' - ' + firm.city : ''}</p>
+              {firm.languages && firm.languages.length > 0 && (firm.languages.length > 1 || firm.languages[0] !== 'ar') && (
+                <p className="font-['Tajawal'] text-xs text-[#D8D2C4] mt-1">🗣 {firm.languages.map(languageName).join('، ')}</p>
+              )}
               {avgRating && (
                 <p className="font-['Tajawal'] text-sm text-[#D8D2C4] mt-1">⭐ {avgRating} ({reviews.length} تقييم)</p>
               )}
@@ -630,19 +658,25 @@ export default function FirmDetailPage() {
 
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   {timeSlots.map(function (slot) {
-                    const isBooked = bookedSlots.indexOf(slot) !== -1
+                    const info = slotInfo(slot)
+                    const isBooked = bookedSlots.indexOf(slot) !== -1 || info.past
                     return (
                       <button
                         key={slot}
                         disabled={isBooked || bookingLoading}
                         onClick={function () { handleBookSlot(slot) }}
+                        title={info.same ? '' : slot + ' بتوقيت المكتب'}
                         className={"px-3 py-2 rounded-md font-['Tajawal'] text-sm transition " + (isBooked ? 'bg-[#E5E0D5] text-[#B0AA9C] cursor-not-allowed line-through' : 'bg-[#F3EEE4] text-[#1B1A17] hover:bg-[#AD8A4E] hover:text-white border border-[#D8D2C4]')}
                       >
-                        {slot}
+                        {info.label}
+                        {info.otherDay && <span className="block text-[10px] opacity-70">{info.viewerDate}</span>}
                       </button>
                     )
                   })}
                 </div>
+                {timeSlots.length > 0 && !slotInfo(timeSlots[0]).same && (
+                  <p className="font-['Tajawal'] text-[11px] text-[#4A473F] mb-3">الأوقات معروضة بتوقيتك. المكتب يعمل بتوقيت {zoneLabel(bookingZone())}.</p>
+                )}
 
                 {bookingMessage && (
                   <p className="font-['Tajawal'] text-sm text-[#2F4538]">{bookingMessage}</p>

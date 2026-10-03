@@ -6,6 +6,7 @@ import { createClient } from '../lib/supabase'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { formatMoney } from '../lib/international'
 
 function CheckoutContent() {
   const searchParams = useSearchParams()
@@ -29,7 +30,7 @@ function CheckoutContent() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   // the price the database will charge this account (with any discount)
-  const [price, setPrice] = useState<{ base: number; final: number; discount_label: string | null } | null>(null)
+  const [price, setPrice] = useState<{ base: number; final: number; discount_label: string | null; currency: string } | null>(null)
 
   useEffect(function () {
     async function checkAccount() {
@@ -55,7 +56,7 @@ function CheckoutContent() {
       if (type !== 'subscription' && type !== 'subaccount') return
       const result = await supabase.rpc('my_checkout_price', { p_tier: tier, p_kind: type === 'subaccount' ? 'sub' : 'main' })
       if (!result.error && result.data) {
-        setPrice({ base: Number(result.data.base), final: Number(result.data.final), discount_label: result.data.discount_label || null })
+        setPrice({ base: Number(result.data.base), final: Number(result.data.final), discount_label: result.data.discount_label || null, currency: result.data.currency || 'JOD' })
       }
     }
     loadPrice()
@@ -209,11 +210,11 @@ function CheckoutContent() {
               <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{getOrderLabel()}</p>
               {price && price.final < price.base ? (
                 <div className="text-left">
-                  <p className="font-['Tajawal'] text-sm text-[#8A8474] line-through">{price.base} د.أ</p>
-                  <p className="font-['Tajawal'] font-bold text-xl text-[#2F4538]">{price.final} د.أ</p>
+                  <p className="font-['Tajawal'] text-sm text-[#8A8474] line-through">{formatMoney(price.base, price.currency)}</p>
+                  <p className="font-['Tajawal'] font-bold text-xl text-[#2F4538]">{formatMoney(price.final, price.currency)}</p>
                 </div>
               ) : (
-                <p className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">{price ? price.final : amount} د.أ</p>
+                <p className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">{price ? formatMoney(price.final, price.currency) : formatMoney(amount, 'JOD')}</p>
               )}
             </div>
             {price && price.discount_label && price.final < price.base && (

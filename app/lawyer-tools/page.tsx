@@ -128,7 +128,7 @@ export default function LawyerToolsPage() {
 
     const lawyerResult = await supabase
       .from('lawyers')
-      .select('id, full_name, pending_firm_id, vacation_until, needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped')
+      .select('id, full_name, pending_firm_id, vacation_until, needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url')
       .eq('user_id', userId)
       .maybeSingle()
 

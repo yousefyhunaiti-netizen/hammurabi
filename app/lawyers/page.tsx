@@ -6,6 +6,7 @@ import { createClient } from '../lib/supabase'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { countryName, languageName, isInternational, currencyOf, formatMoney } from '../lib/international'
 
 type Lawyer = {
   id: number
@@ -20,6 +21,8 @@ type Lawyer = {
   photo_url: string | null
   vacation_until: string | null
   firm_id: number | null
+  country: string | null
+  languages: string[] | null
 }
 
 type Firm = {
@@ -28,6 +31,8 @@ type Firm = {
   bio: string | null
   city: string | null
   founded_year: number | null
+  country: string | null
+  languages: string[] | null
 }
 
 type Specialty = {
@@ -83,6 +88,10 @@ export default function LawyersPage() {
   const [selectedSpecialty, setSelectedSpecialty] = useState('')
   const [selectedCity, setSelectedCity] = useState('')
   const [onlyAvailable, setOnlyAvailable] = useState(false)
+  // «دولي»: lawyers and firms outside Jordan
+  const [intl, setIntl] = useState(false)
+  const [selectedCountry, setSelectedCountry] = useState('')
+  const [selectedLanguage, setSelectedLanguage] = useState('')
 
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [loggedIn, setLoggedIn] = useState(false)
@@ -104,6 +113,25 @@ export default function LawyersPage() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [])
+
+  useEffect(function () {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('intl') === '1') setIntl(true)
+  }, [])
+
+  function switchSection(toIntl: boolean) {
+    setIntl(toIntl)
+    setSelectedCountry('')
+    setSelectedLanguage('')
+    setSelectedCity('')
+    const url = toIntl ? '/lawyers?intl=1' : '/lawyers'
+    try {
+      window.history.replaceState(null, '', url)
+    } catch (e) {
+      // the address bar just keeps the old link
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   useEffect(function () {
     async function loadData() {
@@ -200,13 +228,39 @@ export default function LawyersPage() {
     setSelectedSpecialty('')
     setSelectedCity('')
     setOnlyAvailable(false)
+    setSelectedCountry('')
+    setSelectedLanguage('')
   }
 
-  const lowerSearch = search.trim().toLowerCase()
-  const hasActiveFilters = Boolean(lowerSearch || selectedCity || (viewMode === 'individuals' && (selectedSpecialty || onlyAvailable)))
+  function inSection(country: string | null) {
+    return intl ? isInternational(country) : !isInternational(country)
+  }
 
-  const filteredLawyers = lawyers
+  function speaks(languages: string[] | null, code: string) {
+    return (languages && languages.length > 0 ? languages : ['ar']).indexOf(code) !== -1
+  }
+
+  const sectionLawyers = lawyers.filter(function (l) { return inSection(l.country) })
+  const sectionFirms = firms.filter(function (f) { return inSection(f.country) })
+  const intlCount = lawyers.filter(function (l) { return isInternational(l.country) }).length + firms.filter(function (f) { return isInternational(f.country) }).length
+
+  // only countries and languages we actually have in the international section
+  const availableCountries = Array.from(new Set(
+    lawyers.map(function (l) { return l.country || 'JO' }).concat(firms.map(function (f) { return f.country || 'JO' }))
+      .filter(function (c) { return isInternational(c) })
+  )).sort(function (a, b) { return countryName(a).localeCompare(countryName(b), 'ar') })
+  const availableLanguages = Array.from(new Set(
+    sectionLawyers.map(function (l) { return l.languages || ['ar'] }).concat(sectionFirms.map(function (f) { return f.languages || ['ar'] }))
+      .reduce(function (all, list) { return all.concat(list) }, [] as string[])
+  ))
+
+  const lowerSearch = search.trim().toLowerCase()
+  const hasActiveFilters = Boolean(lowerSearch || selectedCity || selectedCountry || selectedLanguage || (viewMode === 'individuals' && (selectedSpecialty || onlyAvailable)))
+
+  const filteredLawyers = sectionLawyers
     .filter(function (l) {
+      if (selectedCountry && (l.country || 'JO') !== selectedCountry) return false
+      if (selectedLanguage && !speaks(l.languages, selectedLanguage)) return false
       if (selectedSpecialty && getLawyerSpecialtyIds(l).indexOf(Number(selectedSpecialty)) === -1) return false
       if (selectedCity && getLawyerCities(l).indexOf(selectedCity) === -1) return false
       if (onlyAvailable && isOnVacation(l)) return false
@@ -216,6 +270,7 @@ export default function LawyersPage() {
         l.bio || '',
         getLawyerSpecialtyIds(l).map(getSpecialtyName).join(' '),
         getLawyerCities(l).join(' '),
+        intl ? countryName(l.country) : '',
       ].join(' ').toLowerCase()
       return haystack.indexOf(lowerSearch) !== -1
     })
@@ -226,11 +281,13 @@ export default function LawyersPage() {
       return vacA - vacB
     })
 
-  const filteredFirms = firms
+  const filteredFirms = sectionFirms
     .filter(function (f) {
+      if (selectedCountry && (f.country || 'JO') !== selectedCountry) return false
+      if (selectedLanguage && !speaks(f.languages, selectedLanguage)) return false
       if (selectedCity && f.city !== selectedCity) return false
       if (!lowerSearch) return true
-      const haystack = [f.firm_name, f.bio || '', f.city || ''].join(' ').toLowerCase()
+      const haystack = [f.firm_name, f.bio || '', f.city || '', intl ? countryName(f.country) : ''].join(' ').toLowerCase()
       return haystack.indexOf(lowerSearch) !== -1
     })
 
@@ -269,7 +326,9 @@ export default function LawyersPage() {
     const citiesText = getLawyerCities(l).filter(Boolean).join('، ')
     const rating = getRatingInfo(l.id)
     const onVacation = isOnVacation(l)
-    const feeText = l.consultation_fee ? l.consultation_fee + ' د.أ' : 'غير محدد'
+    const feeText = l.consultation_fee ? formatMoney(l.consultation_fee, currencyOf(l.country)) : 'غير محدد'
+    const placeText = intl ? countryName(l.country) + (citiesText ? '، ' + citiesText : '') : citiesText
+    const langs = (l.languages && l.languages.length > 0 ? l.languages : ['ar']).map(languageName).join('، ')
 
     if (layout === 'list') {
       return (
@@ -279,7 +338,7 @@ export default function LawyersPage() {
           <div className="flex-1 min-w-0">
             <h3 dir="auto" className="font-['Tajawal'] font-bold text-[#1B1A17] truncate text-right">{l.full_name}</h3>
             <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">{specialtyNames || 'محامي'}</p>
-            <p className="font-['Tajawal'] text-xs text-[#4A473F] truncate md:hidden">🎓 {l.years_experience || 0} سنوات · 📍 {citiesText}</p>
+            <p className="font-['Tajawal'] text-xs text-[#4A473F] truncate md:hidden">🎓 {l.years_experience || 0} سنوات · 📍 {placeText}</p>
           </div>
 
           <div className="hidden md:block w-36 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">
@@ -288,7 +347,8 @@ export default function LawyersPage() {
 
           <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F] leading-relaxed">
             <p>🎓 {l.years_experience || 0} سنوات خبرة</p>
-            <p className="truncate">📍 {citiesText}</p>
+            <p className="truncate">📍 {placeText}</p>
+            {intl && <p className="truncate">🗣 {langs}</p>}
           </div>
 
           <div className="hidden sm:block w-20 flex-shrink-0 text-center">
@@ -327,7 +387,10 @@ export default function LawyersPage() {
 
         <div className="flex flex-wrap gap-2 mb-4">
           <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F]">🎓 {l.years_experience || 0} سنوات خبرة</span>
-          <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F] max-w-full truncate">📍 {citiesText}</span>
+          <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F] max-w-full truncate">📍 {placeText}</span>
+          {(intl || langs !== languageName('ar')) && (
+            <span className="px-3 py-1 bg-[#F3EEE4] rounded-full font-['Tajawal'] text-xs text-[#4A473F] max-w-full truncate">🗣 {langs}</span>
+          )}
         </div>
 
         <div className="mb-4">
@@ -358,7 +421,7 @@ export default function LawyersPage() {
           </div>
           <div className="flex-1 min-w-0">
             <h3 dir="auto" className="font-['Tajawal'] font-bold text-[#1B1A17] truncate text-right">{f.firm_name}</h3>
-            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">مكتب محاماة{f.city ? ' - ' + f.city : ''}</p>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">مكتب محاماة{intl ? ' - ' + countryName(f.country) : ''}{f.city ? ' - ' + f.city : ''}</p>
           </div>
           <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">👥 {lawyerCount} محامي</div>
           <div className="hidden md:block w-32 flex-shrink-0 font-['Tajawal'] text-xs text-[#4A473F]">{yearsSince !== null ? '🏛️ خبرة ' + yearsSince + ' سنة' : ''}</div>
@@ -376,7 +439,7 @@ export default function LawyersPage() {
           </div>
           <div className="min-w-0 flex-1">
             <h3 dir="auto" className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] truncate text-right">{f.firm_name}</h3>
-            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">مكتب محاماة{f.city ? ' - ' + f.city : ''}</p>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">مكتب محاماة{intl ? ' - ' + countryName(f.country) : ''}{f.city ? ' - ' + f.city : ''}</p>
           </div>
         </div>
 
@@ -475,13 +538,14 @@ export default function LawyersPage() {
               )}
             </div>
           </div>
-          <h1 className="font-['Tajawal'] font-bold text-4xl mb-3">دليل المحامين</h1>
-          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">ابحث عن محامي موثوق حسب الاختصاص والمدينة</p>
+          <h1 className="font-['Tajawal'] font-bold text-4xl mb-3">{intl ? 'دليل المحامين الدولي' : 'دليل المحامين'}</h1>
+          <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">{intl ? 'محامون ومكاتب خارج الأردن، حسب الدولة واللغة' : 'ابحث عن محامي موثوق حسب الاختصاص والمدينة'}</p>
 
           {!loading && (
             <div className="flex flex-wrap gap-3 mt-5">
-              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{lawyers.length} محامي</span>
-              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{firms.length} مكتب محاماة</span>
+              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{sectionLawyers.length} محامي</span>
+              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{sectionFirms.length} مكتب محاماة</span>
+              {intl && <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{availableCountries.length} دولة</span>}
               <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{specialties.length} اختصاصاً</span>
             </div>
           )}
@@ -492,16 +556,26 @@ export default function LawyersPage() {
         <div className="flex flex-wrap justify-between items-center gap-3 mb-5">
           <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 w-fit">
             <button onClick={function () { setViewMode('individuals') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'individuals' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
-              محامون أفراد{!loading ? ' (' + lawyers.length + ')' : ''}
+              محامون أفراد{!loading ? ' (' + sectionLawyers.length + ')' : ''}
             </button>
             <button onClick={function () { setViewMode('firms') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'firms' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
-              مكاتب محاماة{!loading ? ' (' + firms.length + ')' : ''}
+              مكاتب محاماة{!loading ? ' (' + sectionFirms.length + ')' : ''}
             </button>
           </div>
 
+          <div className="flex items-center gap-4">
+          {intl ? (
+            <button onClick={function () { switchSection(false) }} className="font-['Tajawal'] text-xs text-[#4A473F] hover:text-[#AD8A4E] transition">→ محامو الأردن</button>
+          ) : (
+            <button onClick={function () { switchSection(true) }} className="group flex items-center gap-1.5 font-['Tajawal'] text-xs text-[#4A473F] hover:text-[#AD8A4E] transition" title="محامون ومكاتب خارج الأردن">
+              <svg className="w-4 h-4 transition-transform group-hover:rotate-45" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" /></svg>
+              دولي{intlCount > 0 ? ' (' + intlCount + ')' : ''} ←
+            </button>
+          )}
           <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1">
             <button onClick={function () { setLayout('cards') }} className={"px-4 py-1.5 rounded font-['Tajawal'] text-sm transition " + (layout === 'cards' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>▦ بطاقات</button>
             <button onClick={function () { setLayout('list') }} className={"px-4 py-1.5 rounded font-['Tajawal'] text-sm transition " + (layout === 'list' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>☰ قائمة</button>
+          </div>
           </div>
         </div>
 
@@ -544,10 +618,24 @@ export default function LawyersPage() {
           )}
 
           <div className="flex flex-wrap items-center gap-3">
-            <select value={selectedCity} onChange={function (e) { setSelectedCity(e.target.value) }} className="px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-              <option value="">كل المدن</option>
-              {cityOptions.map(function (c) { return <option key={c} value={c}>{c}</option> })}
-            </select>
+            {intl ? (
+              <select value={selectedCountry} onChange={function (e) { setSelectedCountry(e.target.value) }} className="px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                <option value="">كل الدول ({availableCountries.length})</option>
+                {availableCountries.map(function (c) { return <option key={c} value={c}>{countryName(c)}</option> })}
+              </select>
+            ) : (
+              <select value={selectedCity} onChange={function (e) { setSelectedCity(e.target.value) }} className="px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                <option value="">كل المدن</option>
+                {cityOptions.map(function (c) { return <option key={c} value={c}>{c}</option> })}
+              </select>
+            )}
+
+            {availableLanguages.length > 1 && (
+              <select value={selectedLanguage} onChange={function (e) { setSelectedLanguage(e.target.value) }} className="px-4 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                <option value="">كل اللغات</option>
+                {availableLanguages.map(function (code) { return <option key={code} value={code}>{languageName(code)}</option> })}
+              </select>
+            )}
 
             {viewMode === 'individuals' && (
               <label className="flex items-center gap-2 font-['Tajawal'] text-sm text-[#4A473F] cursor-pointer">
@@ -586,7 +674,7 @@ export default function LawyersPage() {
 
         {!loading && viewMode === 'individuals' && (
           <div>
-            {filteredLawyers.length === 0 && renderEmpty('لا يوجد محامون مطابقون')}
+            {filteredLawyers.length === 0 && renderEmpty(intl && sectionLawyers.length === 0 ? 'لا يوجد محامون خارج الأردن بعد' : 'لا يوجد محامون مطابقون')}
             <div className={gridClass}>
               {filteredLawyers.map(renderLawyerCard)}
             </div>
@@ -595,7 +683,7 @@ export default function LawyersPage() {
 
         {!loading && viewMode === 'firms' && (
           <div>
-            {filteredFirms.length === 0 && renderEmpty(firms.length === 0 ? 'لا يوجد مكاتب محاماة مسجلة حالياً' : 'لا توجد مكاتب مطابقة')}
+            {filteredFirms.length === 0 && renderEmpty(sectionFirms.length === 0 ? (intl ? 'لا توجد مكاتب خارج الأردن بعد' : 'لا يوجد مكاتب محاماة مسجلة حالياً') : 'لا توجد مكاتب مطابقة')}
             <div className={gridClass}>
               {filteredFirms.map(renderFirmCard)}
             </div>

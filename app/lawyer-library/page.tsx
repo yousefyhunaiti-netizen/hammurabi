@@ -9,6 +9,7 @@ import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { isInternational } from '../lib/international'
 
 type LibraryItem = {
   id: number
@@ -65,6 +66,8 @@ function parseTags(text: string) {
 export default function LawyerLibraryPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  // قرارك is the Jordanian bar's platform: not shown to lawyers abroad
+  const [abroad, setAbroad] = useState(false)
   const [accountType, setAccountType] = useState<'lawyer' | 'firm'>('lawyer')
   const [accountId, setAccountId] = useState<number | null>(null)
   const [notAllowed, setNotAllowed] = useState(false)
@@ -140,7 +143,8 @@ export default function LawyerLibraryPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
+      if (lawyerResult.data) setAbroad(isInternational(lawyerResult.data.country))
 
       if (lawyerResult.data) {
         if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
@@ -166,6 +170,7 @@ export default function LawyerLibraryPage() {
       }
 
       const firmResult = await supabase.from('firms').select('*').eq('user_id', userId).maybeSingle()
+      if (firmResult.data) setAbroad(isInternational(firmResult.data.country))
 
       if (!firmResult.data) {
         setNotAllowed(true)
@@ -630,6 +635,7 @@ export default function LawyerLibraryPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-6 py-10 flex-1 w-full">
+        {!abroad && (
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-4 mb-6 flex items-center justify-between gap-4">
           <div>
             <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-1">⚖️ قرارك</p>
@@ -637,6 +643,7 @@ export default function LawyerLibraryPage() {
           </div>
           <a href="https://www.qarark.com" target="_blank" rel="noopener noreferrer" className="flex-shrink-0 px-4 py-2 bg-[#1B1A17] text-[#F3EEE4] hover:bg-[#AD8A4E] transition rounded-md font-['Tajawal'] text-xs">فتح قرارك</a>
         </div>
+        )}
 
         <button onClick={toggleForm} className="px-5 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-sm mb-6">
           {showForm ? 'إلغاء' : '+ إضافة بند/قرار'}
@@ -688,7 +695,7 @@ export default function LawyerLibraryPage() {
                 </div>
               )}
 
-              <input type="text" value={link} onChange={function (e) { setLink(e.target.value) }} placeholder="رابط (اختياري)، مثلاً من قرارك" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              <input type="text" value={link} onChange={function (e) { setLink(e.target.value) }} placeholder={abroad ? 'رابط (اختياري)' : 'رابط (اختياري)، مثلاً من قرارك'} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
               <input type="text" value={tagsInput} onChange={function (e) { setTagsInput(e.target.value) }} placeholder="وسوم للبحث السريع، افصل بينها بفاصلة (مثال: عمال، فصل تعسفي)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 

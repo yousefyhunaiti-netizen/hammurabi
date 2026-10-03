@@ -28,7 +28,7 @@ export default function AccountReviewPage() {
       let stage: AccountStage = 'ready'
       let type: 'lawyer' | 'firm' = 'lawyer'
 
-      const lawyerResult = await supabase.from('lawyers').select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url').eq('user_id', userId).maybeSingle()
       if (lawyerResult.data) {
         stage = lawyerStage(lawyerResult.data)
       } else {

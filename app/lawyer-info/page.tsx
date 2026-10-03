@@ -8,6 +8,7 @@ import Footer from '../components/Footer'
 import DeleteAccount from '../components/DeleteAccount'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { countryName, languageName, isInternational, currencyOf, formatMoney, zoneLabel } from '../lib/international'
 
 type Lawyer = {
   id: number
@@ -29,6 +30,9 @@ type Lawyer = {
   firm_id: number | null
   pending_firm_id: number | null
   is_trainee: boolean | null
+  country: string | null
+  timezone: string | null
+  languages: string[] | null
 }
 
 type Specialty = {
@@ -361,9 +365,9 @@ export default function LawyerInfoPage() {
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {renderStat('سنوات الخبرة', (lawyer.years_experience || 0) + ' سنة')}
-            {renderStat('رسوم الاستشارة السريعة', lawyer.consultation_fee ? lawyer.consultation_fee + ' د.أ' : 'غير محدد')}
+            {renderStat('رسوم الاستشارة السريعة', lawyer.consultation_fee ? formatMoney(lawyer.consultation_fee, currencyOf(lawyer.country)) : 'غير محدد')}
             {renderStat('الأجرة بالساعة', lawyer.hourly_rate_range || '-')}
-            {renderStat('الرقم النقابي', lawyer.bar_certificate_number || '-', true)}
+            {renderStat(isInternational(lawyer.country) ? 'رقم الترخيص' : 'الرقم النقابي', lawyer.bar_certificate_number || '-', true)}
           </div>
         </div>
 
@@ -380,7 +384,10 @@ export default function LawyerInfoPage() {
           {renderSectionTitle('بيانات التواصل')}
           {renderRow('البريد الإلكتروني', lawyer.email || '-', true)}
           {renderRow('رقم الهاتف', lawyer.phone || '-', true)}
+          {renderRow('الدولة', countryName(lawyer.country))}
           {renderRow('المدينة', lawyer.city || '-')}
+          {renderRow('المنطقة الزمنية', zoneLabel(lawyer.timezone))}
+          {renderRow('لغات العمل', (lawyer.languages && lawyer.languages.length > 0 ? lawyer.languages : ['ar']).map(languageName).join('، '))}
           {renderRow('العنوان', lawyer.address || '-')}
         </div>
 

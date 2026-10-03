@@ -6,6 +6,8 @@ import { createClient } from '../lib/supabase'
 import { getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import OnboardingSteps from '../components/OnboardingSteps'
+import LocationFields from '../components/LocationFields'
+import { HOME_COUNTRY, HOME_TIMEZONE } from '../lib/international'
 import { firmStage, stagePath } from '../lib/accountStage'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
@@ -23,6 +25,9 @@ type Firm = {
   website_url: string | null
   answer_hours: number | null
   review_hours: number | null
+  country: string | null
+  timezone: string | null
+  languages: string[] | null
 }
 
 type Specialty = {
@@ -83,6 +88,9 @@ export default function FirmDashboardPage() {
   const [profileWebsite, setProfileWebsite] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileMessage, setProfileMessage] = useState('')
+  const [profileCountry, setProfileCountry] = useState(HOME_COUNTRY)
+  const [profileTimezone, setProfileTimezone] = useState(HOME_TIMEZONE)
+  const [profileLanguages, setProfileLanguages] = useState<string[]>(['ar'])
 
   const [firmConsultations, setFirmConsultations] = useState<Consultation[]>([])
   const [reviewBusyId, setReviewBusyId] = useState<number | null>(null)
@@ -134,7 +142,7 @@ export default function FirmDashboardPage() {
 
       const firmResult = await supabase
         .from('firms')
-        .select('id, firm_name, show_lawyer_names, bio, address, city, phone, founded_year, google_maps_link, website_url, answer_hours, review_hours, needs_onboarding, is_approved, is_active, is_comped')
+        .select('id, firm_name, show_lawyer_names, bio, address, city, phone, founded_year, google_maps_link, website_url, answer_hours, review_hours, needs_onboarding, is_approved, is_active, is_comped, country, timezone, languages')
         .eq('user_id', userResult.data.user.id)
         .single()
 
@@ -160,6 +168,9 @@ export default function FirmDashboardPage() {
       setProfileFoundedYear(firmResult.data.founded_year ? String(firmResult.data.founded_year) : '')
       setProfileMapsLink(firmResult.data.google_maps_link || '')
       setProfileWebsite(firmResult.data.website_url || '')
+      setProfileCountry(firmResult.data.country || HOME_COUNTRY)
+      setProfileTimezone(firmResult.data.timezone || HOME_TIMEZONE)
+      setProfileLanguages(firmResult.data.languages && firmResult.data.languages.length > 0 ? firmResult.data.languages : ['ar'])
       setAnswerHours(String(firmResult.data.answer_hours || 24))
       setReviewHours(String(firmResult.data.review_hours || 24))
 
@@ -242,6 +253,9 @@ export default function FirmDashboardPage() {
       founded_year: profileFoundedYear ? Number(profileFoundedYear) : null,
       google_maps_link: profileMapsLink,
       website_url: profileWebsite,
+      country: profileCountry,
+      timezone: profileTimezone,
+      languages: profileLanguages,
     }).eq('id', firm.id)
 
     setProfileSaving(false)
@@ -493,6 +507,15 @@ export default function FirmDashboardPage() {
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">معلومات المكتب</h2>
           <div className="space-y-3">
+            <LocationFields
+              who="firm"
+              country={profileCountry}
+              onCountry={setProfileCountry}
+              timezone={profileTimezone}
+              onTimezone={setProfileTimezone}
+              languages={profileLanguages}
+              onLanguages={setProfileLanguages}
+            />
             <div>
               <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نبذة عن المكتب</label>
               <textarea value={profileBio} onChange={function (e) { setProfileBio(e.target.value) }} placeholder="نبذة عن المكتب" rows={3} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />

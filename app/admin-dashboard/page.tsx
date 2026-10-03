@@ -2,10 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
-import { authHeaders } from '../lib/files'
+import { authHeaders, openPrivateFile } from '../lib/files'
+import { countryName, isInternational } from '../lib/international'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+
+// Payments in US dollars are counted in dinars at this fixed rate.
+const USD_PER_JOD = 1.41
+
+function toJod<T extends { currency?: string | null }>(row: T, field: 'amount' | 'price'): T {
+  if (row.currency !== 'USD') return row
+  const copy: any = Object.assign({}, row)
+  copy[field] = Math.round((Number(copy[field]) / USD_PER_JOD) * 100) / 100
+  return copy
+}
 
 type Payment = {
   id: number
@@ -119,12 +130,12 @@ export default function AdminDashboardPage() {
   async function loadPendingAccounts() {
     const lawyersResult = await supabase
       .from('lawyers')
-      .select('id, full_name, email, phone, city, bar_certificate_number, specialty_id, is_trainee, needs_onboarding, created_at')
+      .select('id, full_name, email, phone, city, bar_certificate_number, specialty_id, is_trainee, needs_onboarding, created_at, country, license_file_url')
       .eq('is_approved', false)
       .order('created_at', { ascending: false })
     const firmsResult = await supabase
       .from('firms')
-      .select('id, firm_name, email, phone, city, address, needs_onboarding, created_at')
+      .select('id, firm_name, email, phone, city, address, needs_onboarding, created_at, country')
       .eq('is_approved', false)
       .order('created_at', { ascending: false })
     setPendingLawyers(lawyersResult.data || [])
@@ -175,8 +186,8 @@ export default function AdminDashboardPage() {
       const lawyersCountResult = await supabase.from('lawyers').select('id', { count: 'exact', head: true })
       const firmsCountResult = await supabase.from('firms').select('id', { count: 'exact', head: true })
 
-      setPayments(paymentsResult.data || [])
-      setSubscriptions(subsResult.data || [])
+      setPayments((paymentsResult.data || []).map(function (p: any) { return toJod(p, 'amount') }))
+      setSubscriptions((subsResult.data || []).map(function (x: any) { return toJod(x, 'price') }))
       setCustomerCount((customersFullResult.data || []).length)
       setCustomerCreated((customersFullResult.data || []).map(function (c: { created_at: string | null }) { return { created_at: c.created_at } }))
       setLawyerCount(lawyersCountResult.count || 0)
@@ -744,7 +755,8 @@ export default function AdminDashboardPage() {
             <p className="font-['Tajawal'] text-sm text-[#4A473F]">لا توجد حسابات بانتظار المراجعة</p>
           )}
           {pendingLawyers.map(function (l) {
-            const complete = !!l.bar_certificate_number && !!l.specialty_id && !!l.city
+            const abroad = isInternational(l.country)
+            const complete = !!l.bar_certificate_number && !!l.specialty_id && !!l.city && (!abroad || !!l.license_file_url)
             const key = 'lawyer-' + l.id
             return (
               <div key={key} className="flex flex-wrap justify-between items-center gap-3 bg-[#F3EEE4] rounded-md p-4 mb-2">
@@ -754,8 +766,11 @@ export default function AdminDashboardPage() {
                     {l.needs_onboarding && !complete && <span className="mr-2 px-2 py-0.5 bg-[#F2DEDC] text-[#7A2E2E] text-[10px] rounded-full">ناقصة</span>}
                   </p>
                   <p className="font-['Tajawal'] text-xs text-[#4A473F]">
-                    {[l.bar_certificate_number ? 'الرقم النقابي: ' + l.bar_certificate_number : '', l.city, l.phone, l.email].filter(Boolean).join(' — ')}
+                    {[abroad ? '🌐 ' + countryName(l.country) : '', l.bar_certificate_number ? (abroad ? 'رقم الترخيص: ' : 'الرقم النقابي: ') + l.bar_certificate_number : '', l.city, l.phone, l.email].filter(Boolean).join(' — ')}
                   </p>
+                  {abroad && l.license_file_url && (
+                    <button type="button" onClick={function () { openPrivateFile(supabase, 'license-files', l.license_file_url) }} className="font-['Tajawal'] text-xs text-[#AD8A4E] underline mt-1">عرض صورة الترخيص</button>
+                  )}
                 </div>
                 <button onClick={function () { handleApprove('lawyer', l.id) }} disabled={approvingKey === key} className="px-4 py-2 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-xs disabled:opacity-60">
                   {approvingKey === key ? 'جاري الاعتماد...' : 'اعتماد'}
@@ -773,7 +788,7 @@ export default function AdminDashboardPage() {
                     {f.firm_name} <span className="font-normal text-xs text-[#AD8A4E]">— مكتب محاماة</span>
                     {f.needs_onboarding && !complete && <span className="mr-2 px-2 py-0.5 bg-[#F2DEDC] text-[#7A2E2E] text-[10px] rounded-full">ناقصة</span>}
                   </p>
-                  <p className="font-['Tajawal'] text-xs text-[#4A473F]">{[f.city, f.address, f.phone, f.email].filter(Boolean).join(' — ')}</p>
+                  <p className="font-['Tajawal'] text-xs text-[#4A473F]">{[isInternational(f.country) ? '🌐 ' + countryName(f.country) : '', f.city, f.address, f.phone, f.email].filter(Boolean).join(' — ')}</p>
                 </div>
                 <button onClick={function () { handleApprove('firm', f.id) }} disabled={approvingKey === key} className="px-4 py-2 bg-[#2F4538] text-white rounded-md font-['Tajawal'] text-xs disabled:opacity-60">
                   {approvingKey === key ? 'جاري الاعتماد...' : 'اعتماد'}

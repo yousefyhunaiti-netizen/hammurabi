@@ -7,6 +7,9 @@ import { lawyerStage, stagePath } from '../lib/accountStage'
 import OnboardingSteps from '../components/OnboardingSteps'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import LocationFields from '../components/LocationFields'
+import { uploadOwnFile, openPrivateFile } from '../lib/files'
+import { isInternational, currencyLabel, currencyOf, HOME_COUNTRY, HOME_TIMEZONE } from '../lib/international'
 
 type Lawyer = {
   id: number
@@ -32,6 +35,10 @@ type Lawyer = {
   firm_id: number | null
   is_active: boolean | null
   is_comped: boolean | null
+  country: string | null
+  timezone: string | null
+  languages: string[] | null
+  license_file_url: string | null
 }
 
 type Specialty = {
@@ -77,6 +84,12 @@ export default function LawyerDashboardPage() {
   const [vacationUntil, setVacationUntil] = useState('')
   const [mapsLink, setMapsLink] = useState('')
   const [websiteUrl, setWebsiteUrl] = useState('')
+  const [country, setCountry] = useState(HOME_COUNTRY)
+  const [timezone, setTimezone] = useState(HOME_TIMEZONE)
+  const [languages, setLanguages] = useState<string[]>(['ar'])
+  const [cityText, setCityText] = useState('')
+  const [licenseFile, setLicenseFile] = useState('')
+  const [uploadingLicense, setUploadingLicense] = useState(false)
 
   const [saveMessage, setSaveMessage] = useState('')
   const [saving, setSaving] = useState(false)
@@ -131,6 +144,11 @@ export default function LawyerDashboardPage() {
       setVacationUntil(l.vacation_until || '')
       setMapsLink(l.google_maps_link || '')
       setWebsiteUrl(l.website_url || '')
+      setCountry(l.country || HOME_COUNTRY)
+      setTimezone(l.timezone || HOME_TIMEZONE)
+      setLanguages(l.languages && l.languages.length > 0 ? l.languages : ['ar'])
+      setCityText(l.city || '')
+      setLicenseFile(l.license_file_url || '')
 
       if (l.working_days) {
         const dayNumbers = l.working_days.split(',').map(function (d) { return Number(d) })
@@ -194,11 +212,28 @@ export default function LawyerDashboardPage() {
     }
   }
 
+  async function handleLicenseUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files || !e.target.files[0]) return
+    setUploadingLicense(true)
+    const stored = await uploadOwnFile(supabase, 'license-files', e.target.files[0])
+    setUploadingLicense(false)
+    if (!stored) {
+      setSaveMessage('تعذر رفع صورة الترخيص، حاول مرة أخرى')
+      return
+    }
+    setLicenseFile(stored)
+  }
+
   async function handleSave() {
     if (!lawyer) return
     setSaveMessage('')
 
-    if (onboarding && (!barNumber.trim() || selectedSpecialties.length === 0 || selectedCities.length === 0)) {
+    const abroad = isInternational(country)
+    if (onboarding && abroad && (!barNumber.trim() || selectedSpecialties.length === 0 || !cityText.trim() || !licenseFile)) {
+      setSaveMessage('يرجى إدخال رقم الترخيص ورفع صورته واختيار الاختصاص وكتابة المدينة')
+      return
+    }
+    if (onboarding && !abroad && (!barNumber.trim() || selectedSpecialties.length === 0 || selectedCities.length === 0)) {
       setSaveMessage('يرجى إدخال الرقم النقابي واختيار الاختصاص والمدينة')
       return
     }
@@ -208,9 +243,9 @@ export default function LawyerDashboardPage() {
     const sortedDays = selectedDays.slice().sort()
     const workingDaysString = sortedDays.join(',')
     const specialtyIdsString = selectedSpecialties.join(',')
-    const citiesString = selectedCities.join(',')
+    const citiesString = isInternational(country) ? cityText.trim() : selectedCities.join(',')
     const primarySpecialty = selectedSpecialties.length > 0 ? selectedSpecialties[0] : null
-    const primaryCity = selectedCities.length > 0 ? selectedCities[0] : ''
+    const primaryCity = isInternational(country) ? cityText.trim() : (selectedCities.length > 0 ? selectedCities[0] : '')
 
     const updateResult = await supabase
       .from('lawyers')
@@ -233,6 +268,10 @@ export default function LawyerDashboardPage() {
         vacation_until: vacationUntil ? vacationUntil : null,
         google_maps_link: mapsLink,
         website_url: websiteUrl,
+        country: country,
+        timezone: timezone,
+        languages: languages,
+        license_file_url: licenseFile || null,
       })
       .eq('id', lawyer.id)
 
@@ -247,7 +286,7 @@ export default function LawyerDashboardPage() {
 
     if (onboarding) {
       // on to the next sign-up step (usually «قيد المراجعة»)
-      const fresh = await supabase.from('lawyers').select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped').eq('id', lawyer.id).maybeSingle()
+      const fresh = await supabase.from('lawyers').select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url').eq('id', lawyer.id).maybeSingle()
       router.push(fresh.data ? stagePath('lawyer', lawyerStage(fresh.data)) : '/account-review')
       return
     }
@@ -329,7 +368,7 @@ export default function LawyerDashboardPage() {
         {onboarding && (
           <div>
             <OnboardingSteps current={1} />
-            <p className="font-['Tajawal'] text-sm text-[#4A473F] text-center mb-6">أدخل الرقم النقابي واختصاصك ومدينتك على الأقل، ثم اضغط «حفظ» لإرسال حسابك للمراجعة.</p>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] text-center mb-6">{isInternational(country) ? 'أدخل رقم ترخيصك وارفع صورته، واختر اختصاصك واكتب مدينتك على الأقل، ثم اضغط «حفظ» لإرسال حسابك للمراجعة.' : 'أدخل الرقم النقابي واختصاصك ومدينتك على الأقل، ثم اضغط «حفظ» لإرسال حسابك للمراجعة.'}</p>
           </div>
         )}
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
@@ -356,6 +395,16 @@ export default function LawyerDashboardPage() {
               />
             </div>
 
+            <LocationFields
+              who="lawyer"
+              country={country}
+              onCountry={setCountry}
+              timezone={timezone}
+              onTimezone={setTimezone}
+              languages={languages}
+              onLanguages={setLanguages}
+            />
+
             <div>
               <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-2">الاختصاصات (يمكن اختيار أكثر من واحد)</label>
               <div className="flex flex-wrap gap-2">
@@ -378,6 +427,12 @@ export default function LawyerDashboardPage() {
               </div>
             </div>
 
+            {isInternational(country) ? (
+              <div>
+                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">المدينة</label>
+                <input type="text" value={cityText} onChange={function (e) { setCityText(e.target.value) }} placeholder="مثال: شنغهاي" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+              </div>
+            ) : (
             <div>
               <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-2">المدن (يمكن اختيار أكثر من واحدة)</label>
               <div className="flex flex-wrap gap-2">
@@ -399,6 +454,7 @@ export default function LawyerDashboardPage() {
                 })}
               </div>
             </div>
+            )}
 
             <div>
               <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">العنوان</label>
@@ -422,7 +478,7 @@ export default function LawyerDashboardPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رسوم الاستشارة السريعة (د.أ) — اختياري</label>
+                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">رسوم الاستشارة السريعة ({currencyLabel(currencyOf(country))}) — اختياري</label>
                 <input
                   type="number"
                   value={fee}
@@ -442,7 +498,7 @@ export default function LawyerDashboardPage() {
             </div>
 
             <div>
-              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">الرقم النقابي</label>
+              <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">{isInternational(country) ? 'رقم ترخيص مزاولة المحاماة / القيد في نقابة بلدك' : 'الرقم النقابي'}</label>
               <input
                 type="text"
                 value={barNumber}
@@ -450,6 +506,21 @@ export default function LawyerDashboardPage() {
                 className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
               />
             </div>
+
+            {isInternational(country) && (
+              <div className="bg-[#F3EEE4] rounded-md p-3">
+                <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">صورة الترخيص أو شهادة القيد (يراها فريق حمورابي فقط للتحقق)</p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="cursor-pointer inline-block px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:border-[#AD8A4E] transition">
+                    📎 {uploadingLicense ? 'جاري الرفع...' : licenseFile ? 'استبدال الملف' : 'رفع الملف'}
+                    <input type="file" accept="image/*,application/pdf" onChange={handleLicenseUpload} disabled={uploadingLicense} className="hidden" />
+                  </label>
+                  {licenseFile && (
+                    <button type="button" onClick={function () { openPrivateFile(supabase, 'license-files', licenseFile) }} className="font-['Tajawal'] text-xs text-[#AD8A4E] underline">✓ عرض الملف المرفوع</button>
+                  )}
+                </div>
+              </div>
+            )}
                         <div>
               <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نطاق الأجرة بالساعة (اختياري، للعرض فقط)</label>
               <input

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
 
-const fileBuckets = ['case-files', 'wakalah-files', 'library-files', 'post-images']
+const fileBuckets = ['case-files', 'wakalah-files', 'library-files', 'post-images', 'license-files']
 
 // "Delete my account" for customers, lawyers and firms: removes the
 // account's own files, then the database deletes the account's data and login.

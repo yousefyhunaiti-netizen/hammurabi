@@ -9,6 +9,7 @@ import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
 import OnboardingSteps from '../components/OnboardingSteps'
 import { lawyerStage, firmStage, stagePath } from '../lib/accountStage'
+import { currencyOf, formatMoney, PRICES } from '../lib/international'
 
 type AccountInfo = {
   id: number
@@ -19,6 +20,7 @@ type AccountInfo = {
   firm_id?: number | null
   subaccount_until?: string | null
   needs_onboarding?: boolean | null
+  country?: string | null
 }
 
 function todayString() {
@@ -82,7 +84,7 @@ export default function SubscriptionPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier, firm_id, subaccount_until, needs_onboarding, bar_certificate_number, specialty_id, city').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier, firm_id, subaccount_until, needs_onboarding, bar_certificate_number, specialty_id, city, country, license_file_url').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         // a new account that hasn't reached this step yet goes back to its step
@@ -104,7 +106,7 @@ export default function SubscriptionPage() {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('id, is_approved, is_comped, is_active, subscription_tier, needs_onboarding, city, address, phone').eq('user_id', userId).maybeSingle()
+      const firmResult = await supabase.from('firms').select('id, is_approved, is_comped, is_active, subscription_tier, needs_onboarding, city, address, phone, country').eq('user_id', userId).maybeSingle()
 
       if (firmResult.data) {
         const stage = firmStage(firmResult.data)
@@ -153,24 +155,26 @@ export default function SubscriptionPage() {
   }
 
   // Prices are also set in the database, which decides what is actually charged.
-  // Every lawyer subscribes separately, including lawyers who belong to a firm.
+  // Accounts outside Jordan pay in US dollars.
+  const currency = currencyOf(account ? account.country : null)
+  const priceTable = PRICES[currency]
   const tiers = accountType === 'firm'
     ? [
-        { key: 'monthly', label: 'شهري', price: 30, per: 'شهرياً' },
-        { key: 'yearly', label: 'سنوي', price: 270, per: 'سنوياً', note: 'وفّر ما يعادل 3 أشهر' },
-        { key: '5year', label: '5 سنوات', price: 450, per: 'لمرة واحدة', note: 'الأفضل قيمة على المدى الطويل' },
+        { key: 'monthly', label: 'شهري', price: priceTable.firm.monthly, per: 'شهرياً' },
+        { key: 'yearly', label: 'سنوي', price: priceTable.firm.yearly, per: 'سنوياً', note: 'وفّر ما يعادل 3 أشهر' },
+        { key: '5year', label: '5 سنوات', price: priceTable.firm['5year'], per: 'لمرة واحدة', note: 'الأفضل قيمة على المدى الطويل' },
       ]
     : [
-        { key: 'monthly', label: 'شهري', price: 20, per: 'شهرياً' },
-        { key: 'yearly', label: 'سنوي', price: 180, per: 'سنوياً', note: 'وفّر ما يعادل 3 أشهر' },
-        { key: '5year', label: '5 سنوات', price: 300, per: 'لمرة واحدة', note: 'الأفضل قيمة على المدى الطويل' },
+        { key: 'monthly', label: 'شهري', price: priceTable.lawyer.monthly, per: 'شهرياً' },
+        { key: 'yearly', label: 'سنوي', price: priceTable.lawyer.yearly, per: 'سنوياً', note: 'وفّر ما يعادل 3 أشهر' },
+        { key: '5year', label: '5 سنوات', price: priceTable.lawyer['5year'], per: 'لمرة واحدة', note: 'الأفضل قيمة على المدى الطويل' },
       ]
 
   // A lawyer's private sub-account: half the lawyer price.
   const subaccountTiers = [
-    { key: 'monthly', label: 'شهري', price: 10, per: 'شهرياً' },
-    { key: 'yearly', label: 'سنوي', price: 90, per: 'سنوياً' },
-    { key: '5year', label: '5 سنوات', price: 150, per: 'لمرة واحدة' },
+    { key: 'monthly', label: 'شهري', price: priceTable.sub.monthly, per: 'شهرياً' },
+    { key: 'yearly', label: 'سنوي', price: priceTable.sub.yearly, per: 'سنوياً' },
+    { key: '5year', label: '5 سنوات', price: priceTable.sub['5year'], per: 'لمرة واحدة' },
   ]
 
   const featureList = accountType === 'firm'
@@ -327,8 +331,9 @@ export default function SubscriptionPage() {
                 <h3 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mt-2 mb-1">{tier.label}</h3>
 
                 <div className="mb-1">
+                  {currency === 'USD' && <span className="font-['Tajawal'] text-sm text-[#4A473F]">$</span>}
                   <span className="font-['Tajawal'] font-bold text-4xl text-[#1B1A17]">{tier.price}</span>
-                  <span className="font-['Tajawal'] text-sm text-[#4A473F]"> د.أ</span>
+                  {currency !== 'USD' && <span className="font-['Tajawal'] text-sm text-[#4A473F]"> د.أ</span>}
                 </div>
                 <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">{tier.per}</p>
 
@@ -374,7 +379,7 @@ export default function SubscriptionPage() {
                     className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-lg p-4 text-center hover:border-[#AD8A4E] transition"
                   >
                     <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{tier.label}</p>
-                    <p className="font-['Tajawal'] text-2xl font-bold text-[#1B1A17]">{tier.price} <span className="text-sm font-normal text-[#4A473F]">د.أ</span></p>
+                    <p className="font-['Tajawal'] text-2xl font-bold text-[#1B1A17]">{formatMoney(tier.price, currency)}</p>
                     <p className="font-['Tajawal'] text-xs text-[#4A473F]">{tier.per}</p>
                   </button>
                 )

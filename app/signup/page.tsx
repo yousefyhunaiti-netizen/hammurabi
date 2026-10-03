@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import HeaderLines from '../components/HeaderLines'
+import { countryOptions, viewerTimeZone, isInternational, HOME_COUNTRY } from '../lib/international'
 
 export default function SignupPage() {
   const [userType, setUserType] = useState('customer')
@@ -11,6 +12,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [isTrainee, setIsTrainee] = useState(false)
+  const [country, setCountry] = useState(HOME_COUNTRY)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -70,6 +72,8 @@ export default function SignupPage() {
         is_approved: false,
         is_active: false,
         is_trainee: isTrainee,
+        country: country,
+        timezone: viewerTimeZone(),
         agreed_to_terms: true,
         agreed_at: nowStr,
       })
@@ -79,6 +83,8 @@ export default function SignupPage() {
         firm_name: fullName,
         email: email,
         phone: phone,
+        country: country,
+        timezone: viewerTimeZone(),
         is_approved: false,
         is_active: false,
         agreed_to_terms: true,
@@ -193,6 +199,24 @@ export default function SignupPage() {
                 className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
               />
             </div>
+
+            {(userType === 'lawyer' || userType === 'firm') && (
+              <div>
+                <label className="block font-['Tajawal'] text-sm text-[#4A473F] mb-1.5">{userType === 'firm' ? 'الدولة التي يقع فيها المكتب' : 'الدولة التي تمارس فيها المحاماة'}</label>
+                <select
+                  value={country}
+                  onChange={function (e) { setCountry(e.target.value) }}
+                  className="w-full px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-[#1B1A17] focus:outline-none focus:ring-2 focus:ring-[#AD8A4E] focus:border-transparent transition"
+                >
+                  {countryOptions().map(function (c) { return <option key={c.code} value={c.code}>{c.name}</option> })}
+                </select>
+                {isInternational(country) && (
+                  <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mt-1.5 leading-relaxed">
+                    {userType === 'firm' ? 'سيظهر مكتبك' : 'ستظهر'} في قسم «دولي» من دليل المحامين، والاشتراك والرسوم بالدولار الأمريكي.{userType === 'lawyer' ? ' ستُطلب منك صورة ترخيص المحاماة في بلدك للمراجعة.' : ''}
+                  </p>
+                )}
+              </div>
+            )}
 
             {userType === 'lawyer' && (
               <div className="flex items-start gap-2">

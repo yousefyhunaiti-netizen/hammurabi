@@ -10,6 +10,8 @@ export type AccountStage = 'info' | 'review' | 'subscribe' | 'ready'
 
 type LawyerRow = {
   needs_onboarding?: boolean | null
+  country?: string | null
+  license_file_url?: string | null
   bar_certificate_number?: string | null
   specialty_id?: number | null
   city?: string | null
@@ -34,11 +36,14 @@ function filled(value: string | null | undefined) {
 
 // The columns these checks need. Queries spell them out in full (joining
 // strings with + makes the database types unknown and fails the build).
-export const LAWYER_STAGE_COLUMNS = 'needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped'
+export const LAWYER_STAGE_COLUMNS = 'needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url'
 export const FIRM_STAGE_COLUMNS = 'needs_onboarding, city, address, phone, is_approved, is_active, is_comped'
 
 export function lawyerInfoComplete(l: LawyerRow) {
-  return filled(l.bar_certificate_number) && !!l.specialty_id && filled(l.city)
+  const basics = filled(l.bar_certificate_number) && !!l.specialty_id && filled(l.city)
+  // outside Jordan: proof of the license in that country is also needed
+  if (l.country && l.country !== 'JO') return basics && filled(l.license_file_url)
+  return basics
 }
 
 export function firmInfoComplete(f: FirmRow) {

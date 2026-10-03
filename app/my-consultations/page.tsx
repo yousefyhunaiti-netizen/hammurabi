@@ -7,6 +7,7 @@ import Footer from '../components/Footer'
 import RatingForm, { RatingStars } from '../components/RatingForm'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { formatMoney } from '../lib/international'
 
 type Consultation = {
   id: number
@@ -17,6 +18,7 @@ type Consultation = {
   answer: string | null
   fee: number | null
   created_at: string
+  currency: string | null
 }
 
 type LawyerInfo = {
@@ -214,7 +216,7 @@ export default function MyConsultationsPage() {
               </div>
             </div>
             <button onClick={payClick} disabled={payingId === c.id} className="w-full py-2.5 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm">
-              {payingId === c.id ? 'جاري الدفع...' : 'ادفع ' + (c.fee || 0) + ' د.أ لعرض الإجابة'}
+              {payingId === c.id ? 'جاري الدفع...' : 'ادفع ' + formatMoney(c.fee || 0, c.currency) + ' لعرض الإجابة'}
             </button>
           </div>
         )}

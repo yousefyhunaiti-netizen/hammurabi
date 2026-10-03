@@ -7,6 +7,7 @@ import Footer from '../components/Footer'
 import RatingForm, { RatingStars } from '../components/RatingForm'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { zonedToInstant, appointmentTimeText } from '../lib/international'
 
 type Appointment = {
   id: number
@@ -17,6 +18,7 @@ type Appointment = {
   status: string
   consultation_type: string | null
   meeting_link: string | null
+  timezone: string | null
 }
 
 type LawyerName = {
@@ -31,9 +33,8 @@ type FirmName = {
 
 // An appointment counts as finished one hour after its start time
 function hasEnded(a: Appointment) {
-  const dateParts = a.appointment_date.split('-').map(Number)
-  const timeParts = (a.time_slot || '00:00').split(':').map(Number)
-  const start = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0] || 0, timeParts[1] || 0)
+  // the booking's time is in the lawyer's own time zone
+  const start = zonedToInstant(a.appointment_date, a.time_slot || '00:00', a.timezone)
   return start.getTime() + 60 * 60 * 1000 < Date.now()
 }
 
@@ -190,7 +191,10 @@ export default function MyAppointmentsPage() {
           <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{withWho}</p>
           {isCancelled && <span className="px-2 py-0.5 bg-[#7A2E2E] text-white text-xs font-['Tajawal'] rounded-full">ملغى</span>}
         </div>
-        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">{formatDateDisplay(a.appointment_date)} - {a.time_slot} ({typeLabel})</p>
+        <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">{appointmentTimeText(a.appointment_date, a.time_slot, a.timezone).main} ({typeLabel})</p>
+        {appointmentTimeText(a.appointment_date, a.time_slot, a.timezone).note && (
+          <p className="font-['Tajawal'] text-[11px] text-[#8A8474] mb-1">{appointmentTimeText(a.appointment_date, a.time_slot, a.timezone).note}</p>
+        )}
         {!isCancelled && a.consultation_type === 'video' && a.meeting_link && (
           <a href={a.meeting_link} target="_blank" rel="noopener noreferrer" className="font-['Tajawal'] text-sm text-[#AD8A4E] underline block mb-2">
             رابط الاجتماع

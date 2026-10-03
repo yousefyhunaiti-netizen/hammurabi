@@ -9,6 +9,7 @@ import Footer from '../components/Footer'
 import WorkspaceSwitch from '../components/WorkspaceSwitch'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { isInternational } from '../lib/international'
 
 type WakalahDoc = {
   id: number
@@ -43,6 +44,8 @@ type RosterLawyer = {
 }
 
 const wakalahTypes = ['عامة عدلية', 'خاصة عدلية', 'وكالة محامي']
+// outside Jordan the Jordanian notary types don't apply
+const wakalahTypesAbroad = ['توكيل عام', 'توكيل خاص', 'توكيل محامي']
 
 function formatDateDisplay(dateStr: string | null) {
   if (!dateStr) return '-'
@@ -90,6 +93,8 @@ export default function WakalahPage() {
   const [formClientName, setFormClientName] = useState('')
   const [formCaseId, setFormCaseId] = useState('')
   const [formType, setFormType] = useState(wakalahTypes[0])
+  const [abroad, setAbroad] = useState(false)
+  const typeList = abroad ? wakalahTypesAbroad : wakalahTypes
   const [formCertifiedBy, setFormCertifiedBy] = useState('')
   const [certDay, setCertDay] = useState('')
   const [certMonth, setCertMonth] = useState('')
@@ -151,7 +156,11 @@ export default function WakalahPage() {
       }
 
       const userId = userResult.data.user.id
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
+      if (lawyerResult.data && isInternational(lawyerResult.data.country)) {
+        setAbroad(true)
+        setFormType(wakalahTypesAbroad[0])
+      }
 
       if (!lawyerResult.data) {
         const firmResult = await supabase.from('firms').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
@@ -234,7 +243,7 @@ export default function WakalahPage() {
   function resetForm() {
     setFormClientName('')
     setFormCaseId('')
-    setFormType(wakalahTypes[0])
+    setFormType(typeList[0])
     setFormCertifiedBy('')
     setCertDay('')
     setCertMonth('')
@@ -547,7 +556,7 @@ export default function WakalahPage() {
             <div>
               <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نوع الوكالة</label>
               <div className="flex gap-2">
-                {wakalahTypes.map(function (t) {
+                {typeList.map(function (t) {
                   return (
                     <button key={t} type="button" onClick={function () { setFormType(t) }} className={"flex-1 py-2 rounded-md font-['Tajawal'] text-xs " + (formType === t ? 'bg-[#1B1A17] text-white' : 'bg-[#F3EEE4] text-[#4A473F] border border-[#D8D2C4]')}>
                       {t}
@@ -557,7 +566,7 @@ export default function WakalahPage() {
               </div>
             </div>
 
-            <input type="text" value={formCertifiedBy} onChange={function (e) { setFormCertifiedBy(e.target.value) }} placeholder="جهة التصديق (كاتب عدل / المحامي نفسه)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+            <input type="text" value={formCertifiedBy} onChange={function (e) { setFormCertifiedBy(e.target.value) }} placeholder={abroad ? 'جهة التصديق (كاتب عدل / المحامي نفسه / جهة رسمية)' : 'جهة التصديق (كاتب عدل / المحامي نفسه)'} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
 
             {renderDateFields('تاريخ التصديق', certDay, setCertDay, certMonth, setCertMonth, certYear, setCertYear)}
 
@@ -570,12 +579,14 @@ export default function WakalahPage() {
               <input type="number" value={formSignersCount} onChange={function (e) { setFormSignersCount(e.target.value) }} min="1" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
             </div>
 
+            {!abroad && (
             <label className="flex items-center gap-2 font-['Tajawal'] text-xs text-[#4A473F]">
               <input type="checkbox" checked={formIssuedAbroad} onChange={function (e) { setFormIssuedAbroad(e.target.checked) }} />
               صادرة من خارج الأردن
             </label>
+            )}
 
-            {formIssuedAbroad && (
+            {formIssuedAbroad && !abroad && (
               <div className="space-y-3 bg-[#F3EEE4] rounded-md p-3">
                 {renderDateFields('1. تاريخ تصديق وزارة الخارجية', mofaDay, setMofaDay, mofaMonth, setMofaMonth, mofaYear, setMofaYear)}
                 {renderDateFields('2. تاريخ تصديق كاتب العدل', notaryDay, setNotaryDay, notaryMonth, setNotaryMonth, notaryYear, setNotaryYear)}

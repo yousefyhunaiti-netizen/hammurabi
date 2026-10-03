@@ -9,6 +9,7 @@ import WorkspaceSwitch from '../components/WorkspaceSwitch'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
 import DateFields from '../components/DateFields'
+import { inViewerZone } from '../lib/international'
 
 type PersonalEvent = {
   id: number
@@ -29,6 +30,16 @@ type AppEvent = {
   status: string
   consultation_type: string | null
   meeting_link: string | null
+  timezone: string | null
+}
+
+// Bookings are stored in the lawyer's own time; the calendar places them on
+// the viewer's own day and hour (the same thing when both are in one zone).
+function toViewerZone(rows: AppEvent[]) {
+  return rows.map(function (a) {
+    const v = inViewerZone(a.appointment_date, a.time_slot, a.timezone)
+    return Object.assign({}, a, { appointment_date: v.date, time_slot: v.time })
+  })
 }
 
 type CombinedEvent = {
@@ -113,7 +124,7 @@ export default function LawyerCalendarPage() {
       const appResult = await supabase.from('appointments').select('*').or(lawyerAppFilter).neq('status', 'cancelled').order('appointment_date', { ascending: true })
 
       setPersonalEvents(personalResult.data || [])
-      setAppEvents(appResult.data || [])
+      setAppEvents(toViewerZone(appResult.data || []))
       return
     }
 
@@ -122,7 +133,7 @@ export default function LawyerCalendarPage() {
       appFilter = appFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
     }
     const firmAppResult = await supabase.from('appointments').select('*').or(appFilter).neq('status', 'cancelled').order('appointment_date', { ascending: true })
-    setAppEvents(firmAppResult.data || [])
+    setAppEvents(toViewerZone(firmAppResult.data || []))
 
     if (rosterIds.length > 0) {
       const firmPersonalResult = await supabase.from('personal_calendar').select('*').in('lawyer_id', rosterIds).order('event_date', { ascending: true })
