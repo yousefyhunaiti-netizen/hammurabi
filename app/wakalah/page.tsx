@@ -114,6 +114,8 @@ export default function WakalahPage() {
   const [formFile, setFormFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  // opened from a case («وكالة جديدة لهذه القضية»): go back to that case after saving
+  const [fromCaseId, setFromCaseId] = useState<number | null>(null)
 
   const [revokingId, setRevokingId] = useState<number | null>(null)
   const [revokeReason, setRevokeReason] = useState('')
@@ -216,6 +218,15 @@ export default function WakalahPage() {
       const casesResult = await supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', lawyerResult.data.id)
       setCases(casesResult.data || [])
 
+      const caseParam = new URLSearchParams(window.location.search).get('case')
+      const fromCase = (casesResult.data || []).find(function (c: LegalCase) { return String(c.id) === caseParam })
+      if (fromCase) {
+        setFormCaseId(String(fromCase.id))
+        setFormClientName(fromCase.client_name || '')
+        setFromCaseId(fromCase.id)
+        setShowForm(true)
+      }
+
       await loadDocs(lawyerResult.data.id)
       setLoading(false)
     }
@@ -306,6 +317,11 @@ export default function WakalahPage() {
 
     if (insertResult.error) {
       setFormError('تعذر حفظ الوكالة، حاول مرة أخرى')
+      return
+    }
+
+    if (fromCaseId && formCaseId === String(fromCaseId)) {
+      router.push('/lawyer-cases?open=' + fromCaseId)
       return
     }
 

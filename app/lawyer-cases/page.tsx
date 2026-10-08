@@ -10,6 +10,8 @@ import WorkspaceSwitch from '../components/WorkspaceSwitch'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
 import DateFields from '../components/DateFields'
+import CourtPicker, { CourtValue } from '../components/CourtPicker'
+import { CASE_STATUSES, OPEN_STATUSES, SUSPENSION_TYPES, courtText } from '../lib/courts'
 import { isInternational, currencyOf, currencyLabel } from '../lib/international'
 
 type LegalCase = {
@@ -25,12 +27,13 @@ type LegalCase = {
   case_value: number | null
   filing_date: string | null
   court_name: string | null
+  court_category: string | null
   court_instance: string | null
   court_location: string | null
   judge_name: string | null
   witnesses: string | null
   status: string
-  deadline_date: string | null
+  suspension_type: string | null
   notes: string | null
 }
 
@@ -86,8 +89,6 @@ type WakalahDoc = {
   notary_date: string | null
 }
 
-const wakalahTypes = ['عامة عدلية', 'خاصة عدلية', 'وكالة محامي']
-const wakalahTypesAbroad = ['توكيل عام', 'توكيل خاص', 'توكيل محامي']
 const WAKALAH_COLUMNS = 'id, case_id, lawyer_file_url, customer_file_url, status, client_name, wakalah_type, certified_by, certified_date, expiry_date, issued_abroad, mofa_date, notary_date'
 
 type Specialty = {
@@ -100,8 +101,24 @@ type RosterLawyer = {
   full_name: string
 }
 
-const courtInstances = ['محكمة البداية', 'محكمة الاستئناف', 'محكمة التمييز']
-const statusOptions = ['نشطة', 'مؤجلة', 'مكتسبة', 'خاسرة', 'مغلقة']
+const EMPTY_COURT: CourtValue = { category: '', type: '', location: '' }
+
+// Labels sit above the boxes, so they stay visible while typing.
+const labelClass = "block font-['Tajawal'] text-xs text-[#4A473F] mb-1"
+const fieldClass = "w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+const smallFieldClass = "w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]"
+
+// A date a few days earlier, as YYYY-MM-DD (local dates, no time zone shift).
+function daysBefore(dateStr: string, days: number) {
+  const parts = dateStr.split('-').map(Number)
+  const d = new Date(parts[0], parts[1] - 1, parts[2] - days)
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
+
+function todayString() {
+  const now = new Date()
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+}
 
 function formatDateDisplay(dateStr: string | null) {
   if (!dateStr) return '-'
@@ -116,12 +133,9 @@ export default function LawyerCasesPage() {
   const [country, setCountry] = useState('JO')
   const abroad = isInternational(country)
   const cur = currencyLabel(currencyOf(country))
-  function courtLabel(stage: string | null) {
-    if (!stage) return ''
-    if (!abroad) return stage
-    if (stage === 'محكمة البداية') return 'محكمة الدرجة الأولى'
-    if (stage === 'محكمة التمييز') return 'المحكمة العليا'
-    return stage
+  // «بداية — إربد»; older cases that only have a typed court name show that
+  function courtOf(c: LegalCase) {
+    return courtText(c.court_instance, c.court_location) || c.court_name || ''
   }
   const [lawyerId, setLawyerId] = useState<number | null>(null)
   const [notAllowed, setNotAllowed] = useState(false)
@@ -163,12 +177,9 @@ export default function LawyerCasesPage() {
   const [formLawsuitSubject, setFormLawsuitSubject] = useState('')
   const [formCaseValue, setFormCaseValue] = useState('')
   const [formFilingDate, setFormFilingDate] = useState('')
-  const [formCourtName, setFormCourtName] = useState('')
-  const [formCourtInstance, setFormCourtInstance] = useState(courtInstances[0])
-  const [formCourtLocation, setFormCourtLocation] = useState('')
+  const [formCourt, setFormCourt] = useState<CourtValue>(EMPTY_COURT)
   const [formJudgeName, setFormJudgeName] = useState('')
   const [formWitnesses, setFormWitnesses] = useState('')
-  const [formDeadlineDate, setFormDeadlineDate] = useState('')
   const [formNotes, setFormNotes] = useState('')
   const [savingCase, setSavingCase] = useState(false)
 
@@ -182,6 +193,8 @@ export default function LawyerCasesPage() {
   const [editNextProcedure, setEditNextProcedure] = useState('')
   const [editProcedureDate, setEditProcedureDate] = useState('')
   const [editProcedureTime, setEditProcedureTime] = useState('')
+  const [editReminderDays, setEditReminderDays] = useState(3)
+  const [hearingError, setHearingError] = useState('')
 
   const [newFolderName, setNewFolderName] = useState('')
 
@@ -189,17 +202,6 @@ export default function LawyerCasesPage() {
   const [newInvoiceDueDate, setNewInvoiceDueDate] = useState('')
   const [savingInvoice, setSavingInvoice] = useState(false)
 
-  const [uploadingWakalah, setUploadingWakalah] = useState(false)
-  const [showWakalahForm, setShowWakalahForm] = useState(false)
-  const [wkType, setWkType] = useState(wakalahTypes[0])
-  const [wkCertifiedBy, setWkCertifiedBy] = useState('')
-  const [wkCertifiedDate, setWkCertifiedDate] = useState('')
-  const [wkExpiryDate, setWkExpiryDate] = useState('')
-  const [wkAbroad, setWkAbroad] = useState(false)
-  const [wkMofaDate, setWkMofaDate] = useState('')
-  const [wkNotaryDate, setWkNotaryDate] = useState('')
-  const [wkFile, setWkFile] = useState<File | null>(null)
-  const [wkError, setWkError] = useState('')
 
   const supabase = createClient()
   const router = useRouter()
@@ -330,6 +332,17 @@ export default function LawyerCasesPage() {
     }
   }, [])
 
+  // «/lawyer-cases?open=12» opens that case (used when coming back from the wakalah page)
+  const openedFromLink = useRef(false)
+  useEffect(function () {
+    if (loading || openedFromLink.current || cases.length === 0) return
+    const param = new URLSearchParams(window.location.search).get('open')
+    if (!param) return
+    openedFromLink.current = true
+    const found = cases.find(function (c) { return String(c.id) === param })
+    if (found) loadCaseDetail(found)
+  }, [loading, cases])
+
   async function handleLogout() {
     await supabase.auth.signOut()
     setMenuOpen(false)
@@ -350,12 +363,9 @@ export default function LawyerCasesPage() {
     setFormLawsuitSubject('')
     setFormCaseValue('')
     setFormFilingDate('')
-    setFormCourtName('')
-    setFormCourtInstance(courtInstances[0])
-    setFormCourtLocation('')
+    setFormCourt(EMPTY_COURT)
     setFormJudgeName('')
     setFormWitnesses('')
-    setFormDeadlineDate('')
     setFormNotes('')
   }
 
@@ -374,13 +384,13 @@ export default function LawyerCasesPage() {
       lawsuit_subject: formLawsuitSubject,
       case_value: formCaseValue ? Number(formCaseValue) : null,
       filing_date: formFilingDate || null,
-      court_name: formCourtName,
-      court_instance: formCourtInstance,
-      court_location: formCourtLocation,
+      court_category: abroad ? null : (formCourt.category || null),
+      court_instance: formCourt.type || null,
+      court_location: formCourt.location || null,
+      court_name: courtText(formCourt.type, formCourt.location) || null,
       judge_name: formJudgeName,
       witnesses: formWitnesses,
-      status: 'نشطة',
-      deadline_date: formDeadlineDate || null,
+      status: 'منظورة',
       notes: formNotes,
     })
 
@@ -400,9 +410,10 @@ export default function LawyerCasesPage() {
 
   async function handleUpdateCaseField(field: string, value: any) {
     if (!selectedCase) return
-    await supabase.from('legal_cases').update({ [field]: value }).eq('id', selectedCase.id)
+    const id = selectedCase.id
+    await supabase.from('legal_cases').update({ [field]: value }).eq('id', id)
     if (lawyerId) await loadCases(lawyerId)
-    setSelectedCase(Object.assign({}, selectedCase, { [field]: value }))
+    setSelectedCase(function (prev) { return prev && prev.id === id ? Object.assign({}, prev, { [field]: value }) : prev })
   }
 
   async function handleSaveFullEdit() {
@@ -418,12 +429,12 @@ export default function LawyerCasesPage() {
       lawsuit_subject: formLawsuitSubject,
       case_value: formCaseValue ? Number(formCaseValue) : null,
       filing_date: formFilingDate || null,
-      court_name: formCourtName,
-      court_instance: formCourtInstance,
-      court_location: formCourtLocation,
+      court_category: abroad ? null : (formCourt.category || null),
+      court_instance: formCourt.type || null,
+      court_location: formCourt.location || null,
+      court_name: courtText(formCourt.type, formCourt.location) || null,
       judge_name: formJudgeName,
       witnesses: formWitnesses,
-      deadline_date: formDeadlineDate || null,
       notes: formNotes,
     }).eq('id', selectedCase.id)
 
@@ -444,12 +455,13 @@ export default function LawyerCasesPage() {
     setFormLawsuitSubject(selectedCase.lawsuit_subject || '')
     setFormCaseValue(selectedCase.case_value ? String(selectedCase.case_value) : '')
     setFormFilingDate(selectedCase.filing_date || '')
-    setFormCourtName(selectedCase.court_name || '')
-    setFormCourtInstance(selectedCase.court_instance || courtInstances[0])
-    setFormCourtLocation(selectedCase.court_location || '')
+    setFormCourt({
+      category: selectedCase.court_category || '',
+      type: selectedCase.court_instance || '',
+      location: selectedCase.court_location || (selectedCase.court_category ? '' : (selectedCase.court_name || '')),
+    })
     setFormJudgeName(selectedCase.judge_name || '')
     setFormWitnesses(selectedCase.witnesses || '')
-    setFormDeadlineDate(selectedCase.deadline_date || '')
     setFormNotes(selectedCase.notes || '')
     setEditingCase(true)
   }
@@ -467,11 +479,11 @@ export default function LawyerCasesPage() {
     const invoicesResult = await supabase.from('invoices').select('*').eq('case_id', c.id)
     setCaseInvoices(invoicesResult.data || [])
 
-    const wakalahResult = await supabase.from('wakalah_documents').select('id, case_id, lawyer_file_url, customer_file_url, status, client_name, wakalah_type, certified_by, certified_date, expiry_date, issued_abroad, mofa_date, notary_date').eq('case_id', c.id)
+    const wakalahResult = await supabase.from('wakalah_documents').select(WAKALAH_COLUMNS).eq('case_id', c.id)
     setCaseWakalah(wakalahResult.data || [])
 
     if (lawyerId) {
-      const unlinkedResult = await supabase.from('wakalah_documents').select('id, case_id, lawyer_file_url, customer_file_url, status, client_name, wakalah_type, certified_by, certified_date, expiry_date, issued_abroad, mofa_date, notary_date').eq('lawyer_id', lawyerId).is('case_id', null).neq('status', 'revoked')
+      const unlinkedResult = await supabase.from('wakalah_documents').select(WAKALAH_COLUMNS).eq('lawyer_id', lawyerId).is('case_id', null).neq('status', 'revoked')
       setUnlinkedWakalah(unlinkedResult.data || [])
     }
   }
@@ -491,14 +503,16 @@ export default function LawyerCasesPage() {
     })
   }
 
-  async function syncProcedureToCalendar(dueDate: string, dueTime: string, caseNumber: string) {
+  // The preparation reminder a few days before the next hearing
+  // (witnesses, documents...), with what has to be done.
+  async function addPreparationReminder(nextDate: string, days: number, todo: string, caseNumber: string) {
     if (!lawyerId) return
     await supabase.from('personal_calendar').insert({
       lawyer_id: lawyerId,
-      title: 'إجراء مطلوب - قضية رقم ' + caseNumber,
-      event_date: dueDate,
-      time_slot: dueTime || '',
-      notes: 'موعد تقديم إجراء',
+      title: 'تحضير لجلسة قضية رقم ' + caseNumber + ' (بعد ' + days + ' أيام)',
+      event_date: daysBefore(nextDate, days),
+      time_slot: '',
+      notes: todo ? 'المطلوب: ' + todo : 'تحضير للجلسة القادمة',
     })
   }
 
@@ -528,20 +542,43 @@ export default function LawyerCasesPage() {
     setEditNextProcedure(h.next_procedure || '')
     setEditProcedureDate(h.procedure_due_date || '')
     setEditProcedureTime(h.procedure_due_time || '')
+    setEditReminderDays(3)
+    setHearingError('')
   }
 
+  // Saves what happened in the hearing and what is needed next. A new
+  // next-hearing date also becomes a hearing of its own, goes into the
+  // calendar, and gets a preparation reminder 3 or 4 days before it.
   async function handleSaveHearingEdit(h: CaseHearing) {
     if (!selectedCase) return
+    setHearingError('')
 
-    await supabase.from('case_hearings').update({
+    const updateResult = await supabase.from('case_hearings').update({
       outcome: editOutcome,
       next_procedure: editNextProcedure,
       procedure_due_date: editProcedureDate || null,
       procedure_due_time: editProcedureTime || null,
     }).eq('id', h.id)
 
-    if (editProcedureDate) {
-      await syncProcedureToCalendar(editProcedureDate, editProcedureTime, selectedCase.case_number)
+    if (updateResult.error) {
+      setHearingError('تعذر الحفظ، حاول مرة أخرى')
+      return
+    }
+
+    const nextDateChanged = !!editProcedureDate && editProcedureDate !== (h.procedure_due_date || '')
+    if (nextDateChanged) {
+      const already = hearingsAll.some(function (x) { return x.case_id === selectedCase.id && x.hearing_date === editProcedureDate })
+      if (!already) {
+        await supabase.from('case_hearings').insert({
+          case_id: selectedCase.id,
+          hearing_date: editProcedureDate,
+          hearing_time: editProcedureTime || null,
+        })
+        await syncHearingToCalendar(editProcedureDate, editProcedureTime, selectedCase.case_number)
+      }
+      if (daysBefore(editProcedureDate, editReminderDays) >= todayString()) {
+        await addPreparationReminder(editProcedureDate, editReminderDays, editNextProcedure.trim(), selectedCase.case_number)
+      }
     }
 
     setEditingHearingId(null)
@@ -611,61 +648,6 @@ export default function LawyerCasesPage() {
     if (selectedCase) await loadCaseDetail(selectedCase)
   }
 
-  function resetWakalahForm() {
-    setWkType((abroad ? wakalahTypesAbroad : wakalahTypes)[0])
-    setWkCertifiedBy('')
-    setWkCertifiedDate('')
-    setWkExpiryDate('')
-    setWkAbroad(false)
-    setWkMofaDate('')
-    setWkNotaryDate('')
-    setWkFile(null)
-    setWkError('')
-  }
-
-  // A new wakalah for this case, with the same details as the «الوكالات» page.
-  async function handleSaveCaseWakalah() {
-    if (!selectedCase || !lawyerId) return
-    setWkError('')
-    setUploadingWakalah(true)
-
-    let storedPath: string | null = null
-    if (wkFile) {
-      storedPath = await uploadOwnFile(supabase, 'wakalah-files', wkFile)
-      if (!storedPath) {
-        setUploadingWakalah(false)
-        setWkError('تعذر رفع الملف، حاول مرة أخرى')
-        return
-      }
-    }
-
-    const insertResult = await supabase.from('wakalah_documents').insert({
-      lawyer_id: lawyerId,
-      case_id: selectedCase.id,
-      client_name: selectedCase.client_name || null,
-      status: 'pending_customer',
-      wakalah_type: wkType,
-      certified_by: wkCertifiedBy.trim() || null,
-      certified_date: wkCertifiedDate || null,
-      expiry_date: wkExpiryDate || null,
-      issued_abroad: wkAbroad,
-      mofa_date: wkAbroad ? (wkMofaDate || null) : null,
-      notary_date: wkAbroad ? (wkNotaryDate || null) : null,
-      lawyer_file_url: storedPath,
-    })
-
-    setUploadingWakalah(false)
-
-    if (insertResult.error) {
-      setWkError('تعذر حفظ الوكالة، حاول مرة أخرى')
-      return
-    }
-
-    resetWakalahForm()
-    setShowWakalahForm(false)
-    await loadCaseDetail(selectedCase)
-  }
-
   function wakalahExpired(w: WakalahDoc) {
     if (w.status === 'revoked' || !w.expiry_date) return false
     const now = new Date()
@@ -687,18 +669,14 @@ export default function LawyerCasesPage() {
 
   function getNextHearing(caseId: number) {
     const caseHearings = hearingsAll.filter(function (h) { return h.case_id === caseId })
-    const upcoming = caseHearings.filter(function (h) { return h.hearing_date >= new Date().toISOString().split('T')[0] })
+    const upcoming = caseHearings.filter(function (h) { return h.hearing_date >= todayString() })
     upcoming.sort(function (a, b) { return a.hearing_date.localeCompare(b.hearing_date) })
     return upcoming.length > 0 ? upcoming[0] : null
   }
 
   function getKanbanColumn(c: LegalCase) {
-    if (c.status === 'مكتسبة') return 'مكتسبة'
-    if (c.status === 'خاسرة') return 'خاسرة'
-    return c.court_instance || courtInstances[0]
+    return CASE_STATUSES.indexOf(c.status) === -1 ? CASE_STATUSES[0] : c.status
   }
-
-  const kanbanColumns = courtInstances.concat(['مكتسبة', 'خاسرة'])
 
   function getRosterName(id: number) {
     const found = roster.find(function (l) { return l.id === id })
@@ -708,21 +686,23 @@ export default function LawyerCasesPage() {
   const visibleCases = cases.filter(function (c) {
     if (isFirm && lawyerFilter !== 'all' && c.lawyer_id !== Number(lawyerFilter)) return false
     if (statusFilter === 'all') return true
-    if (statusFilter === 'active') return c.status !== 'مغلقة' && c.status !== 'مكتسبة' && c.status !== 'خاسرة'
-    if (statusFilter === 'closed') return c.status === 'مغلقة' || c.status === 'مكتسبة' || c.status === 'خاسرة'
+    const open = OPEN_STATUSES.indexOf(getKanbanColumn(c)) !== -1
+    if (statusFilter === 'active') return open
+    if (statusFilter === 'closed') return !open
     return true
   })
 
   async function handleDropOnColumn(column: string) {
     if (draggedCaseId === null || isFirm) return
-
-    if (column === 'مكتسبة' || column === 'خاسرة') {
-      await supabase.from('legal_cases').update({ status: column }).eq('id', draggedCaseId)
-    } else {
-      await supabase.from('legal_cases').update({ court_instance: column, status: 'نشطة' }).eq('id', draggedCaseId)
-    }
-
+    const update: { status: string; suspension_type?: null } = { status: column }
+    if (column !== 'موقوفة') update.suspension_type = null
+    await supabase.from('legal_cases').update(update).eq('id', draggedCaseId)
     setDraggedCaseId(null)
+    if (lawyerId) await loadCases(lawyerId)
+  }
+
+  async function handleSuspensionOnCard(caseId: number, value: string) {
+    await supabase.from('legal_cases').update({ suspension_type: value || null }).eq('id', caseId)
     if (lawyerId) await loadCases(lawyerId)
   }
 
@@ -765,7 +745,7 @@ export default function LawyerCasesPage() {
         <div className="flex justify-between items-start mb-2">
           <p className="font-['Tajawal'] font-bold text-[#1B1A17]">رقم {c.case_number}</p>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">{c.status}</span>
+            <span className="px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] text-xs font-['Tajawal'] rounded-full">{c.status}{c.status === 'موقوفة' && c.suspension_type ? ' — ' + c.suspension_type : ''}</span>
             {!isFirm && (
             <div className="relative">
               <button onClick={menuClick} className="cursor-pointer text-[#4A473F] px-1">⋮</button>
@@ -782,7 +762,18 @@ export default function LawyerCasesPage() {
         {isFirm && <p className="font-['Tajawal'] text-xs text-[#1B1A17] font-bold mb-1">المحامي: {getRosterName(c.lawyer_id)}</p>}
         <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">الموكل: {c.client_name}</p>
         {c.opposing_party && <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-1">ضد: {c.opposing_party}</p>}
-        <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-1">{getSpecialtyName(c.specialty_id)} — {courtLabel(c.court_instance)}</p>
+        <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-1">{[getSpecialtyName(c.specialty_id), c.court_category, courtOf(c)].filter(Boolean).join(' — ')}</p>
+        {c.status === 'موقوفة' && !isFirm && (
+          <select
+            value={c.suspension_type || ''}
+            onClick={function (e) { e.stopPropagation() }}
+            onChange={function (e) { handleSuspensionOnCard(c.id, e.target.value) }}
+            className="w-full mt-1 mb-1 px-2 py-1 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]"
+          >
+            <option value="">نوع الوقف؟</option>
+            {SUSPENSION_TYPES.map(function (t) { return <option key={t} value={t}>{t}</option> })}
+          </select>
+        )}
         {nextHearing && (
           <p className="font-['Tajawal'] text-xs text-[#2F4538] font-bold">الجلسة القادمة: {formatDateDisplay(nextHearing.hearing_date)}</p>
         )}
@@ -796,8 +787,8 @@ export default function LawyerCasesPage() {
     }
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {kanbanColumns.map(function (col) {
+      <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
+        {CASE_STATUSES.map(function (col) {
           const colCases = visibleCases.filter(function (c) { return getKanbanColumn(c) === col })
 
           function dropHandler() {
@@ -805,8 +796,8 @@ export default function LawyerCasesPage() {
           }
 
           return (
-            <div key={col} onDragOver={dragOver} onDrop={dropHandler} className="bg-[#F3EEE4] rounded-lg p-3 min-h-[120px]">
-              <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-3 text-center">{courtLabel(col)} ({colCases.length})</h3>
+            <div key={col} onDragOver={dragOver} onDrop={dropHandler} className="bg-[#F3EEE4] rounded-lg p-3 min-h-[160px] min-w-[230px] flex-1 shrink-0">
+              <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-3 text-center">{col} ({colCases.length})</h3>
               {colCases.length === 0 && (
                 <p className="font-['Tajawal'] text-xs text-[#4A473F] text-center">لا توجد قضايا</p>
               )}
@@ -834,27 +825,53 @@ export default function LawyerCasesPage() {
         <div className="flex justify-between items-start mb-2">
           <p className="font-['Tajawal'] font-bold text-sm text-[#1B1A17]">{formatDateDisplay(h.hearing_date)} {h.hearing_time ? '- ' + h.hearing_time : ''}</p>
           {!isEditing && !isFirm && (
-            <button onClick={editClick} className="font-['Tajawal'] text-xs text-[#AD8A4E]">تحديث النتيجة</button>
+            <button onClick={editClick} className="font-['Tajawal'] text-xs text-[#AD8A4E]">تحديث الجلسة</button>
           )}
         </div>
 
-        {!isEditing && h.outcome && (
-          <div>
-            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">النتيجة: {h.outcome}</p>
-            {h.next_procedure && <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-1">الإجراء المطلوب: {h.next_procedure}</p>}
-            {h.procedure_due_date && <p className="font-['Tajawal'] text-xs text-[#7A2E2E]">موعد تقديم الإجراء: {formatDateDisplay(h.procedure_due_date)} {h.procedure_due_time}</p>}
+        {!isEditing && (h.outcome || h.next_procedure || h.procedure_due_date) && (
+          <div className="space-y-1">
+            {h.outcome && <p className="font-['Tajawal'] text-xs text-[#4A473F]"><span className="font-bold text-[#1B1A17]">ما تم في الجلسة:</span> {h.outcome}</p>}
+            {h.next_procedure && <p className="font-['Tajawal'] text-xs text-[#4A473F]"><span className="font-bold text-[#1B1A17]">المطلوب للجلسة القادمة:</span> {h.next_procedure}</p>}
+            {h.procedure_due_date && <p className="font-['Tajawal'] text-xs text-[#7A2E2E] font-bold">الجلسة القادمة: {formatDateDisplay(h.procedure_due_date)} {h.procedure_due_time || ''}</p>}
           </div>
         )}
 
         {isEditing && (
-          <div className="space-y-2 mt-2">
-            <textarea value={editOutcome} onChange={function (e) { setEditOutcome(e.target.value) }} placeholder="نتيجة الجلسة" rows={2} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]" />
-            <textarea value={editNextProcedure} onChange={function (e) { setEditNextProcedure(e.target.value) }} placeholder="الإجراء المطلوب بعد الجلسة" rows={2} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]" />
-            <div className="grid grid-cols-1 gap-2">
-              <DateFields value={editProcedureDate} onChange={setEditProcedureDate} tone="white" />
-              <input type="time" value={editProcedureTime} onChange={function (e) { setEditProcedureTime(e.target.value) }} className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#1B1A17]" />
+          <div className="space-y-3 mt-2">
+            <div>
+              <label className={labelClass}>ما تم في الجلسة</label>
+              <textarea value={editOutcome} onChange={function (e) { setEditOutcome(e.target.value) }} rows={2} className={smallFieldClass} />
             </div>
-            <button onClick={saveClick} className="w-full py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-xs">حفظ</button>
+            <div>
+              <label className={labelClass}>المطلوب للجلسة القادمة (شهود، مستندات، مذكرة...)</label>
+              <textarea value={editNextProcedure} onChange={function (e) { setEditNextProcedure(e.target.value) }} rows={2} className={smallFieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>موعد الجلسة القادمة</label>
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-start">
+                <DateFields value={editProcedureDate} onChange={setEditProcedureDate} tone="white" />
+                <input type="time" value={editProcedureTime} onChange={function (e) { setEditProcedureTime(e.target.value) }} className={smallFieldClass} />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>تذكير للتحضير قبل الجلسة بـ</label>
+              <div className="flex gap-2">
+                {[3, 4].map(function (d) {
+                  return (
+                    <button key={d} type="button" onClick={function () { setEditReminderDays(d) }} className={"flex-1 py-2 rounded-md font-['Tajawal'] text-xs " + (editReminderDays === d ? 'bg-[#1B1A17] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}>
+                      {d} أيام
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="font-['Tajawal'] text-[11px] text-[#4A473F] mt-1">تُضاف الجلسة القادمة والتذكير إلى أجندتك تلقائياً.</p>
+            </div>
+            {hearingError && <p className="font-['Tajawal'] text-xs text-[#7A2E2E]">{hearingError}</p>}
+            <div className="flex gap-2">
+              <button onClick={function () { setEditingHearingId(null) }} className="flex-1 py-2 bg-white text-[#4A473F] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs">إلغاء</button>
+              <button onClick={saveClick} className="flex-1 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-xs">حفظ</button>
+            </div>
           </div>
         )}
       </div>
@@ -903,36 +920,48 @@ export default function LawyerCasesPage() {
   }
 
   function renderCaseForm() {
+    function field(label: string, input: React.ReactNode) {
+      return (
+        <div>
+          <label className={labelClass}>{label}</label>
+          {input}
+        </div>
+      )
+    }
+
     return (
-      <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-6 space-y-3">
-        <input type="text" value={formCaseNumber} onChange={function (e) { setFormCaseNumber(e.target.value) }} placeholder="رقم القضية" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <select value={formSpecialty} onChange={function (e) { setFormSpecialty(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-          <option value="">اختر الاختصاص</option>
-          {specialties.map(function (s) { return <option key={s.id} value={s.id}>{s.name_ar}</option> })}
-        </select>
-        <input type="text" value={formClientName} onChange={function (e) { setFormClientName(e.target.value) }} placeholder="اسم الموكل" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <input type="tel" value={formClientPhone} onChange={function (e) { setFormClientPhone(e.target.value) }} placeholder="هاتف الموكل" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <input type="text" value={formOpposingParty} onChange={function (e) { setFormOpposingParty(e.target.value) }} placeholder="الخصم (شخص أو شركة أو جهة حكومية)" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <input type="text" value={formOpposingCounsel} onChange={function (e) { setFormOpposingCounsel(e.target.value) }} placeholder="محامي الخصم" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <textarea value={formLawsuitSubject} onChange={function (e) { setFormLawsuitSubject(e.target.value) }} placeholder="موضوع الدعوى" rows={2} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <input type="number" value={formCaseValue} onChange={function (e) { setFormCaseValue(e.target.value) }} placeholder="قيمة الدعوى" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <div>
-          <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">تاريخ رفع الدعوى (يوم تقديم الدعوى للمحكمة)</label>
-          <DateFields value={formFilingDate} onChange={setFormFilingDate} tone="paper" />
+      <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-6 mb-6 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {field('رقم القضية', <input type="text" value={formCaseNumber} onChange={function (e) { setFormCaseNumber(e.target.value) }} className={fieldClass} />)}
+          {field('الاختصاص', (
+            <select value={formSpecialty} onChange={function (e) { setFormSpecialty(e.target.value) }} className={fieldClass}>
+              <option value="">اختر</option>
+              {specialties.map(function (sp) { return <option key={sp.id} value={sp.id}>{sp.name_ar}</option> })}
+            </select>
+          ))}
+          {field('اسم الموكل', <input type="text" value={formClientName} onChange={function (e) { setFormClientName(e.target.value) }} className={fieldClass} />)}
+          {field('هاتف الموكل', <input type="tel" value={formClientPhone} onChange={function (e) { setFormClientPhone(e.target.value) }} className={fieldClass} />)}
+          {field('الخصم (شخص أو شركة أو جهة حكومية)', <input type="text" value={formOpposingParty} onChange={function (e) { setFormOpposingParty(e.target.value) }} className={fieldClass} />)}
+          {field('محامي الخصم', <input type="text" value={formOpposingCounsel} onChange={function (e) { setFormOpposingCounsel(e.target.value) }} className={fieldClass} />)}
         </div>
-        <input type="text" value={formCourtName} onChange={function (e) { setFormCourtName(e.target.value) }} placeholder="اسم المحكمة" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <select value={formCourtInstance} onChange={function (e) { setFormCourtInstance(e.target.value) }} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-          {courtInstances.map(function (ci) { return <option key={ci} value={ci}>{courtLabel(ci)}</option> })}
-        </select>
-        <input type="text" value={formCourtLocation} onChange={function (e) { setFormCourtLocation(e.target.value) }} placeholder="موقع المحكمة" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <input type="text" value={formJudgeName} onChange={function (e) { setFormJudgeName(e.target.value) }} placeholder="اسم القاضي" className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <textarea value={formWitnesses} onChange={function (e) { setFormWitnesses(e.target.value) }} placeholder="الشهود" rows={2} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-        <div>
-          <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">موعد حرج (اختياري)</label>
-          <p className="font-['Tajawal'] text-xs text-[#AD8A4E] mb-1">لتتبع مواعيد تقادم قانونية أو مواعيد نهائية غير مرتبطة بجلسة محددة بعد</p>
-          <DateFields value={formDeadlineDate} onChange={setFormDeadlineDate} tone="paper" />
+
+        {field('موضوع الدعوى', <textarea value={formLawsuitSubject} onChange={function (e) { setFormLawsuitSubject(e.target.value) }} rows={2} className={fieldClass} />)}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {field('قيمة الدعوى (' + cur + ')', <input type="number" value={formCaseValue} onChange={function (e) { setFormCaseValue(e.target.value) }} className={fieldClass} />)}
+          {field('تاريخ رفع الدعوى', <DateFields value={formFilingDate} onChange={setFormFilingDate} tone="paper" />)}
         </div>
-        <textarea value={formNotes} onChange={function (e) { setFormNotes(e.target.value) }} placeholder="ملاحظات" rows={2} className="w-full px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
+
+        <div className="border-t border-[#D8D2C4] pt-4">
+          <CourtPicker value={formCourt} onChange={setFormCourt} abroad={abroad} />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {field('اسم القاضي', <input type="text" value={formJudgeName} onChange={function (e) { setFormJudgeName(e.target.value) }} className={fieldClass} />)}
+          {field('الشهود', <textarea value={formWitnesses} onChange={function (e) { setFormWitnesses(e.target.value) }} rows={1} className={fieldClass} />)}
+        </div>
+
+        {field('ملاحظات', <textarea value={formNotes} onChange={function (e) { setFormNotes(e.target.value) }} rows={2} className={fieldClass} />)}
       </div>
     )
   }
@@ -950,8 +979,10 @@ export default function LawyerCasesPage() {
     })
     const totalPending = totalInvoiced - totalPaid
 
-    function statusChange(e: React.ChangeEvent<HTMLSelectElement>) {
-      handleUpdateCaseField('status', e.target.value)
+    async function statusChange(e: React.ChangeEvent<HTMLSelectElement>) {
+      const value = e.target.value
+      if (value !== 'موقوفة' && c.suspension_type) await handleUpdateCaseField('suspension_type', null)
+      handleUpdateCaseField('status', value)
     }
 
     function folderNameChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -978,13 +1009,19 @@ export default function LawyerCasesPage() {
           <div className="flex justify-between items-start mb-4">
             <div>
               <h2 className="font-['Tajawal'] font-bold text-xl text-[#1B1A17]">قضية رقم {c.case_number}</h2>
-              {isFirm && <p className="font-['Tajawal'] text-sm text-[#4A473F] mt-1">المحامي: {getRosterName(c.lawyer_id)} — {c.status}</p>}
+              {isFirm && <p className="font-['Tajawal'] text-sm text-[#4A473F] mt-1">المحامي: {getRosterName(c.lawyer_id)} — {c.status}{c.status === 'موقوفة' && c.suspension_type ? ' (' + c.suspension_type + ')' : ''}</p>}
             </div>
             {!isFirm && (
             <div className="flex items-center gap-2">
-              <select value={c.status} onChange={statusChange} className="px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-                {statusOptions.map(function (s) { return <option key={s} value={s}>{s}</option> })}
+              <select value={getKanbanColumn(c)} onChange={statusChange} className="px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                {CASE_STATUSES.map(function (st) { return <option key={st} value={st}>{st}</option> })}
               </select>
+              {c.status === 'موقوفة' && (
+                <select value={c.suspension_type || ''} onChange={function (e) { handleUpdateCaseField('suspension_type', e.target.value || null) }} className="px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                  <option value="">نوع الوقف</option>
+                  {SUSPENSION_TYPES.map(function (t) { return <option key={t} value={t}>{t}</option> })}
+                </select>
+              )}
               {!editingCase && (
                 <button onClick={startFullEdit} className="px-3 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-xs">تعديل</button>
               )}
@@ -1010,14 +1047,11 @@ export default function LawyerCasesPage() {
               <div className="col-span-2"><p className="text-[#4A473F]">موضوع الدعوى</p><p className="text-[#1B1A17] font-medium">{c.lawsuit_subject || '-'}</p></div>
               <div><p className="text-[#4A473F]">قيمة الدعوى</p><p className="text-[#1B1A17] font-medium">{c.case_value ? c.case_value + ' ' + cur : '-'}</p></div>
               <div><p className="text-[#4A473F]">تاريخ رفع الدعوى</p><p className="text-[#1B1A17] font-medium">{formatDateDisplay(c.filing_date)}</p></div>
-              <div><p className="text-[#4A473F]">المحكمة</p><p className="text-[#1B1A17] font-medium">{c.court_name || '-'}</p></div>
-              <div><p className="text-[#4A473F]">درجة التقاضي</p><p className="text-[#1B1A17] font-medium">{courtLabel(c.court_instance)}</p></div>
-              <div><p className="text-[#4A473F]">موقع المحكمة</p><p className="text-[#1B1A17] font-medium">{c.court_location || '-'}</p></div>
+              {!abroad && <div><p className="text-[#4A473F]">نوع القضاء</p><p className="text-[#1B1A17] font-medium">{c.court_category || '-'}</p></div>}
+              <div><p className="text-[#4A473F]">المحكمة</p><p className="text-[#1B1A17] font-medium">{c.court_instance || c.court_name || '-'}</p></div>
+              <div><p className="text-[#4A473F]">الموقع</p><p className="text-[#1B1A17] font-medium">{c.court_location || '-'}</p></div>
               <div><p className="text-[#4A473F]">القاضي</p><p className="text-[#1B1A17] font-medium">{c.judge_name || '-'}</p></div>
               <div className="col-span-2"><p className="text-[#4A473F]">الشهود</p><p className="text-[#1B1A17] font-medium">{c.witnesses || '-'}</p></div>
-              <div className="col-span-2 bg-[#F3EEE4] rounded-md p-3">
-                <p className="text-[#7A2E2E] font-bold">⚠️ موعد حرج (تقادم/موعد نهائي غير مرتبط بجلسة): {c.deadline_date ? formatDateDisplay(c.deadline_date) : 'غير محدد'}</p>
-              </div>
               {c.notes && <div className="col-span-2"><p className="text-[#4A473F]">ملاحظات</p><p className="text-[#1B1A17] font-medium">{c.notes}</p></div>}
             </div>
           )}
@@ -1161,62 +1195,10 @@ export default function LawyerCasesPage() {
             <p className="font-['Tajawal'] text-sm text-[#4A473F]">لا توجد وكالة مرتبطة بهذه القضية</p>
           )}
 
-          {!isFirm && !showWakalahForm && (
-            <button onClick={function () { resetWakalahForm(); setShowWakalahForm(true) }} className="mt-1 mb-3 px-4 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-xs">
-              + إضافة وكالة لهذه القضية
-            </button>
-          )}
-
-          {!isFirm && showWakalahForm && (
-            <div className="bg-[#F3EEE4] rounded-md p-4 mb-3 space-y-3">
-              <p className="font-['Tajawal'] text-xs text-[#4A473F]">الموكل: <strong className="text-[#1B1A17]">{c.client_name}</strong></p>
-              <div>
-                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">نوع الوكالة</label>
-                <div className="flex gap-2">
-                  {(abroad ? wakalahTypesAbroad : wakalahTypes).map(function (t) {
-                    return (
-                      <button key={t} type="button" onClick={function () { setWkType(t) }} className={"flex-1 py-2 rounded-md font-['Tajawal'] text-xs " + (wkType === t ? 'bg-[#1B1A17] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}>{t}</button>
-                    )
-                  })}
-                </div>
-              </div>
-              <input type="text" value={wkCertifiedBy} onChange={function (e) { setWkCertifiedBy(e.target.value) }} placeholder="جهة التصديق (كاتب عدل / المحامي نفسه)" className="w-full px-3 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-              <div>
-                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">تاريخ التصديق</label>
-                <DateFields value={wkCertifiedDate} onChange={setWkCertifiedDate} tone="white" />
-              </div>
-              <div>
-                <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">تاريخ انتهاء الوكالة (إن وُجد)</label>
-                <DateFields value={wkExpiryDate} onChange={setWkExpiryDate} tone="white" />
-              </div>
-              {!abroad && (
-              <label className="flex items-center gap-2 font-['Tajawal'] text-xs text-[#4A473F]">
-                <input type="checkbox" checked={wkAbroad} onChange={function (e) { setWkAbroad(e.target.checked) }} />
-                صادرة من خارج الأردن
-              </label>
-              )}
-              {wkAbroad && !abroad && (
-                <div className="space-y-3 bg-white rounded-md p-3">
-                  <div>
-                    <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">1. تاريخ تصديق وزارة الخارجية</label>
-                    <DateFields value={wkMofaDate} onChange={setWkMofaDate} />
-                  </div>
-                  <div>
-                    <label className="block font-['Tajawal'] text-xs text-[#4A473F] mb-1">2. تاريخ تصديق كاتب العدل</label>
-                    <DateFields value={wkNotaryDate} onChange={setWkNotaryDate} />
-                  </div>
-                </div>
-              )}
-              <label className="cursor-pointer inline-block px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-xs text-[#4A473F] hover:bg-[#D8D2C4] transition">
-                📎 {wkFile ? wkFile.name : 'رفع ملف الوكالة (اختياري)'}
-                <input type="file" onChange={function (e) { setWkFile(e.target.files ? e.target.files[0] : null) }} className="hidden" />
-              </label>
-              {wkError && <p className="font-['Tajawal'] text-sm text-[#7A2E2E]">{wkError}</p>}
-              <div className="flex gap-2">
-                <button onClick={function () { setShowWakalahForm(false) }} className="flex-1 py-2 bg-white text-[#4A473F] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm">إلغاء</button>
-                <button onClick={handleSaveCaseWakalah} disabled={uploadingWakalah} className="flex-1 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm disabled:opacity-60">{uploadingWakalah ? 'جاري الحفظ...' : 'حفظ الوكالة'}</button>
-              </div>
-            </div>
+          {!isFirm && (
+            <a href={'/wakalah?case=' + c.id} className="inline-block mt-1 mb-3 px-4 py-2 bg-[#AD8A4E] text-white rounded-md font-['Tajawal'] text-xs hover:bg-[#c49b58] transition">
+              + وكالة جديدة لهذه القضية (في صفحة الوكالات)
+            </a>
           )}
 
           {!isFirm && unlinkedWakalah.length > 0 && (
@@ -1342,8 +1324,8 @@ export default function LawyerCasesPage() {
               </div>
 
               <select value={statusFilter} onChange={function (e) { setStatusFilter(e.target.value) }} className="px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
-                <option value="active">القضايا النشطة فقط</option>
-                <option value="closed">المغلقة/المكتسبة/الخاسرة</option>
+                <option value="active">المنظورة والجارية فقط</option>
+                <option value="closed">المنتهية (مفصولة، منفذة، مسقطة، متروكة)</option>
                 <option value="all">عرض الكل</option>
               </select>
 

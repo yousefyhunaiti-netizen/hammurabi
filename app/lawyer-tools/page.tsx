@@ -10,7 +10,8 @@ import { lawyerStage, firmStage, stagePath } from '../lib/accountStage'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
 
-type Tool = { href: string; label: string; desc: string; icon: string; firms: boolean }
+// jordanOnly: Jordan-specific tools, hidden for accounts outside Jordan
+type Tool = { href: string; label: string; desc: string; icon: string; firms: boolean; jordanOnly?: boolean }
 
 type ToolGroup = {
   groupLabel: string
@@ -24,6 +25,8 @@ const toolGroups: ToolGroup[] = [
       { href: '/lawyer-cases', label: 'ملفات القضايا', desc: 'قائمة وكانبان لكل قضاياك مع الجلسات والمرفقات', icon: 'folder', firms: true },
       { href: '/lawyer-library', label: 'مكتبتي القانونية', desc: 'احفظ القوانين ولخّصها بالذكاء الاصطناعي', icon: 'book', firms: true },
       { href: '/wakalah', label: 'الوكالات', desc: 'ارفع وتابع وكالات عملائك', icon: 'signature', firms: true },
+      { href: '/lawyer-commerce', label: 'وزارة الصناعة والتجارة', desc: 'تأسيس الشركات والسجلات والعلامات التجارية ومعاملاتها', icon: 'building', firms: true, jordanOnly: true },
+      { href: '/lawyer-government', label: 'الجهات الحكومية', desc: 'تابع معاملات موكليك لدى الوزارات والدوائر الحكومية', icon: 'landmark', firms: true, jordanOnly: true },
       { href: '/hiring', label: 'التوظيف والتدريب', desc: 'انشر فرص عمل أو تدريب، أو قدّم على فرصة تناسبك', icon: 'people', firms: true },
     ],
   },
@@ -56,6 +59,8 @@ function ToolIcon({ name }: { name: string }) {
     archive: 'M5 8h14M5 8a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v1a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8M10 12h4',
     people: 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1a4 4 0 100-8 4 4 0 000 8zm6 3a4 4 0 00-3-3.87',
     chat: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z',
+    building: 'M4 21V5a2 2 0 012-2h8a2 2 0 012 2v16M16 9h2a2 2 0 012 2v10M3 21h18M8 7h4M8 11h4M8 15h4',
+    landmark: 'M3 21h18M4 10h16M12 3l9 5H3l9-5zM6 10v8m4-8v8m4-8v8m4-8v8',
   }
 
   return (
@@ -78,6 +83,7 @@ export default function LawyerToolsPage() {
   const [accountType, setAccountType] = useState<'lawyer' | 'firm'>('lawyer')
   const [accountName, setAccountName] = useState('')
   const [lawyerId, setLawyerId] = useState<number | null>(null)
+  const [country, setCountry] = useState('JO')
   const [pendingFirmId, setPendingFirmId] = useState<number | null>(null)
   const [pendingFirmName, setPendingFirmName] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -140,6 +146,7 @@ export default function LawyerToolsPage() {
       }
 
       setAccountType('lawyer')
+      setCountry(lawyerResult.data.country || 'JO')
       setAccountName(lawyerResult.data.full_name)
       setLawyerId(lawyerResult.data.id)
       setCurrentVacation(lawyerResult.data.vacation_until || '')
@@ -161,7 +168,7 @@ export default function LawyerToolsPage() {
       return
     }
 
-    const firmResult = await supabase.from('firms').select('id, firm_name, needs_onboarding, city, address, phone, is_approved, is_active, is_comped').eq('user_id', userId).maybeSingle()
+    const firmResult = await supabase.from('firms').select('id, firm_name, needs_onboarding, city, address, phone, is_approved, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
 
     if (!firmResult.data) {
       setNotAllowed(true)
@@ -177,6 +184,7 @@ export default function LawyerToolsPage() {
 
     setAccountType('firm')
     setAccountName(firmResult.data.firm_name)
+    setCountry(firmResult.data.country || 'JO')
 
     const firmUnreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmResult.data.id).eq('is_read', false)
     setTotalUnread(countConversations(firmUnreadResult.data || []))
@@ -315,7 +323,10 @@ export default function LawyerToolsPage() {
     .map(function (group) {
       return {
         groupLabel: group.groupLabel,
-        tools: group.tools.filter(function (tool) { return accountType === 'firm' ? tool.firms : true }),
+        tools: group.tools.filter(function (tool) {
+          if (tool.jordanOnly && country !== 'JO') return false
+          return accountType === 'firm' ? tool.firms : true
+        }),
       }
     })
     .filter(function (group) { return group.tools.length > 0 })
