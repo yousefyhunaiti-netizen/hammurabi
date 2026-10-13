@@ -661,7 +661,7 @@ export default function LawyerMessagesPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6" style={{ zIndex: 30 }}>
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6" style={menuOpen ? { zIndex: 30 } : undefined}>
         <HeaderLines />
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
