@@ -25,7 +25,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const payload = await request.json()
+  let payload: { to?: unknown; subject?: unknown; message?: unknown } = {}
+  try {
+    payload = await request.json()
+  } catch (e) {
+    return NextResponse.json({ error: 'bad request' }, { status: 400 })
+  }
   const to = String(payload.to || '').trim()
   const subject = String(payload.subject || 'رسالة من حمورابي').slice(0, 200)
   const message = String(payload.message || '').slice(0, 5000)

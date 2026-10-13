@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import WorkspaceSwitch from '../components/WorkspaceSwitch'
@@ -44,6 +46,8 @@ function toViewerZone(rows: AppEvent[]) {
 
 type CombinedEvent = {
   source: string
+  // client appointment, court hearing, case/transaction task, or a personal reminder
+  kind: 'app' | 'hearing' | 'case' | 'personal'
   title: string
   date: string
   time: string
@@ -80,6 +84,7 @@ export default function LawyerCalendarPage() {
   const [roster, setRoster] = useState<RosterLawyer[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [filter, setFilter] = useState('all')
+  const [listKind, setListKind] = useState('all')
 
   const [viewMonth, setViewMonth] = useState(new Date().getMonth())
   const [viewYear, setViewYear] = useState(new Date().getFullYear())
@@ -115,13 +120,13 @@ export default function LawyerCalendarPage() {
 
   async function loadAll(type: 'lawyer' | 'firm', id: number, rosterIds: number[], anonFirmId: number | null, anonSpecialtyId: number | null) {
     if (type === 'lawyer') {
-      const personalResult = await supabase.from('personal_calendar').select('*').eq('lawyer_id', id).order('event_date', { ascending: true })
+      const personalResult = await fetchAll(function (from, to) { return supabase.from('personal_calendar').select('*').eq('lawyer_id', id).order('event_date', { ascending: true }).order('id').range(from, to) })
 
       let lawyerAppFilter = 'lawyer_id.eq.' + id
       if (anonFirmId && anonSpecialtyId) {
         lawyerAppFilter = lawyerAppFilter + ',and(lawyer_id.is.null,firm_id.eq.' + anonFirmId + ',specialty_id.eq.' + anonSpecialtyId + ')'
       }
-      const appResult = await supabase.from('appointments').select('*').or(lawyerAppFilter).neq('status', 'cancelled').order('appointment_date', { ascending: true })
+      const appResult = await fetchAll(function (from, to) { return supabase.from('appointments').select('*').or(lawyerAppFilter).neq('status', 'cancelled').order('appointment_date', { ascending: true }).order('id').range(from, to) })
 
       setPersonalEvents(personalResult.data || [])
       setAppEvents(toViewerZone(appResult.data || []))
@@ -132,11 +137,11 @@ export default function LawyerCalendarPage() {
     if (rosterIds.length > 0) {
       appFilter = appFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
     }
-    const firmAppResult = await supabase.from('appointments').select('*').or(appFilter).neq('status', 'cancelled').order('appointment_date', { ascending: true })
+    const firmAppResult = await fetchAll(function (from, to) { return supabase.from('appointments').select('*').or(appFilter).neq('status', 'cancelled').order('appointment_date', { ascending: true }).order('id').range(from, to) })
     setAppEvents(toViewerZone(firmAppResult.data || []))
 
     if (rosterIds.length > 0) {
-      const firmPersonalResult = await supabase.from('personal_calendar').select('*').in('lawyer_id', rosterIds).order('event_date', { ascending: true })
+      const firmPersonalResult = await fetchAll(function (from, to) { return supabase.from('personal_calendar').select('*').in('lawyer_id', rosterIds).order('event_date', { ascending: true }).order('id').range(from, to) })
       setPersonalEvents(firmPersonalResult.data || [])
     } else {
       setPersonalEvents([])
@@ -155,7 +160,7 @@ export default function LawyerCalendarPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, firm_id, specialty_id').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_active, is_comped, firm_id, specialty_id').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
@@ -182,7 +187,7 @@ export default function LawyerCalendarPage() {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('*').eq('user_id', userId).maybeSingle()
+      const firmResult = await myFirm(supabase).select('*').eq('user_id', userId).maybeSingle()
 
       if (!firmResult.data) {
         setNotAllowed(true)
@@ -400,8 +405,13 @@ export default function LawyerCalendarPage() {
     for (let i = 0; i < personalEvents.length; i++) {
       if (!personalVisible(personalEvents[i])) continue
       const personalOwner = accountType === 'firm' ? getLawyerName(personalEvents[i].lawyer_id) : ''
+      const t = personalEvents[i].title || ''
+      const kind: CombinedEvent['kind'] = t.indexOf('جلسة قضية') === 0 ? 'hearing'
+        : (t.indexOf('قضية رقم') !== -1 || t.indexOf('متابعة معاملة') === 0) ? 'case'
+        : 'personal'
       combined.push({
         source: 'personal',
+        kind: kind,
         title: personalEvents[i].title + (personalOwner ? ' — ' + personalOwner : ''),
         date: personalEvents[i].event_date,
         time: personalEvents[i].time_slot || '',
@@ -414,6 +424,7 @@ export default function LawyerCalendarPage() {
       const appOwner = accountType === 'firm' ? getAppOwnerLabel(appEvents[i]) : ''
       combined.push({
         source: 'app',
+        kind: 'app',
         title: typeLabel + (appOwner ? ' — ' + appOwner : ''),
         date: appEvents[i].appointment_date,
         time: appEvents[i].time_slot,
@@ -427,14 +438,21 @@ export default function LawyerCalendarPage() {
     return combined
   }
 
-  const combinedList = buildCombinedList()
+  const combinedList = buildCombinedList().filter(function (item) {
+    return listKind === 'all' || item.kind === listKind
+  })
+
+  function showDate(d: string) {
+    const parts = (d || '').split('-')
+    return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : d
+  }
 
   function renderCombinedRow(item: CombinedEvent, index: number) {
     const isApp = item.source === 'app'
     return (
       <div key={index} className={"flex justify-between items-center rounded-md p-3 mb-2 " + (isApp ? 'bg-[#2F4538] text-white' : 'bg-white border border-[#D8D2C4]')}>
         <p className={"font-['Tajawal'] text-sm " + (isApp ? 'text-white' : 'text-[#1B1A17]')}>{item.title}</p>
-        <p className={"font-['Tajawal'] text-xs " + (isApp ? 'text-[#D8D2C4]' : 'text-[#4A473F]')}>{item.date} - {item.time}</p>
+        <p className={"font-['Tajawal'] text-xs whitespace-nowrap ms-3 " + (isApp ? 'text-[#D8D2C4]' : 'text-[#4A473F]')}>{showDate(item.date)}{item.time ? ' - ' + item.time : ''}</p>
       </div>
     )
   }
@@ -686,7 +704,24 @@ export default function LawyerCalendarPage() {
         )}
 
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6">
-          <h2 className="font-['Tajawal'] font-bold text-[#1B1A17] mb-4">قائمة جميع المواعيد</h2>
+          <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+            <h2 className="font-['Tajawal'] font-bold text-[#1B1A17]">قائمة جميع المواعيد</h2>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: 'all', label: 'الكل' },
+                { value: 'app', label: 'مواعيد العملاء' },
+                { value: 'hearing', label: 'الجلسات' },
+                { value: 'case', label: 'مرتبطة بالقضايا والمعاملات' },
+                { value: 'personal', label: 'تذكيرات شخصية' },
+              ].map(function (o) {
+                return (
+                  <button key={o.value} type="button" onClick={function () { setListKind(o.value) }} className={"px-3 py-1.5 rounded-full font-['Tajawal'] text-xs transition " + (listKind === o.value ? 'bg-[#1B1A17] text-white' : 'bg-[#F3EEE4] text-[#4A473F] hover:bg-[#EDE6D8]')}>
+                    {o.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           {combinedList.length === 0 && (
             <p className="font-['Tajawal'] text-sm text-[#4A473F] text-center">لا توجد مواعيد</p>
           )}

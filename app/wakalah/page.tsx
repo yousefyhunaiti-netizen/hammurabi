@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import { uploadOwnFile, openPrivateFile } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
@@ -143,7 +145,7 @@ export default function WakalahPage() {
   }
 
   async function loadDocs(id: number) {
-    const result = await supabase.from('wakalah_documents').select('*').eq('lawyer_id', id).order('id', { ascending: false })
+    const result = await fetchAll(function (from, to) { return supabase.from('wakalah_documents').select('*').eq('lawyer_id', id).order('id', { ascending: false }).range(from, to) })
     setDocs(result.data || [])
   }
 
@@ -158,14 +160,14 @@ export default function WakalahPage() {
       }
 
       const userId = userResult.data.user.id
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
       if (lawyerResult.data && isInternational(lawyerResult.data.country)) {
         setAbroad(true)
         setFormType(wakalahTypesAbroad[0])
       }
 
       if (!lawyerResult.data) {
-        const firmResult = await supabase.from('firms').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+        const firmResult = await myFirm(supabase).select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
 
         if (!firmResult.data) {
           setNotAllowed(true)
@@ -192,9 +194,9 @@ export default function WakalahPage() {
 
         // The database returns only shared (non-private) records of the firm's lawyers.
         if (rosterIds.length > 0) {
-          const firmCasesResult = await supabase.from('legal_cases').select('id, case_number, client_name').in('lawyer_id', rosterIds)
+          const firmCasesResult = await fetchAll(function (from, to) { return supabase.from('legal_cases').select('id, case_number, client_name').in('lawyer_id', rosterIds).order('id').range(from, to) })
           setCases(firmCasesResult.data || [])
-          const firmDocsResult = await supabase.from('wakalah_documents').select('*').in('lawyer_id', rosterIds).order('id', { ascending: false })
+          const firmDocsResult = await fetchAll(function (from, to) { return supabase.from('wakalah_documents').select('*').in('lawyer_id', rosterIds).order('id', { ascending: false }).range(from, to) })
           setDocs(firmDocsResult.data || [])
         }
 
@@ -215,7 +217,7 @@ export default function WakalahPage() {
 
       setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
-      const casesResult = await supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', lawyerResult.data.id)
+      const casesResult = await fetchAll(function (from, to) { return supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', lawyerResult.data!.id).order('id').range(from, to) })
       setCases(casesResult.data || [])
 
       const caseParam = new URLSearchParams(window.location.search).get('case')

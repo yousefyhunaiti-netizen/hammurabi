@@ -272,3 +272,37 @@ a[class*="rounded-md"][class*="bg-"]:active {
   0%, 100% { transform: translateY(0) rotate(-2deg); }
   50% { transform: translateY(-10px) rotate(2deg); }
 }
+
+/* Anything you can click shows the hand cursor (buttons, links, menus,
+   checkboxes, file pickers); disabled buttons show they can't be clicked. */
+button,
+a[href],
+[role="button"],
+[role="radio"],
+[role="tab"],
+select,
+summary,
+label:has(> input[type="file"]),
+label:has(> input[type="checkbox"]),
+label:has(> input[type="radio"]),
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+input[type="submit"],
+input[type="button"] {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+}
+
+/* cards you can drag (Kanban) */
+[draggable="true"] {
+  cursor: grab;
+}
+[draggable="true"]:active {
+  cursor: grabbing;
+}

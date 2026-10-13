@@ -128,18 +128,11 @@ export default function AdminDashboardPage() {
 
   // Accounts waiting for the team's review (new sign-ups send their details first).
   async function loadPendingAccounts() {
-    const lawyersResult = await supabase
-      .from('lawyers')
-      .select('id, full_name, email, phone, city, bar_certificate_number, specialty_id, is_trainee, needs_onboarding, created_at, country, license_file_url')
-      .eq('is_approved', false)
-      .order('created_at', { ascending: false })
-    const firmsResult = await supabase
-      .from('firms')
-      .select('id, firm_name, email, phone, city, address, needs_onboarding, created_at, country')
-      .eq('is_approved', false)
-      .order('created_at', { ascending: false })
-    setPendingLawyers(lawyersResult.data || [])
-    setPendingFirms(firmsResult.data || [])
+    // private details (email, licence file) come through an admin-only database function
+    const result = await supabase.rpc('admin_pending_accounts')
+    const data = (result.data || { lawyers: [], firms: [] }) as { lawyers: any[]; firms: any[] }
+    setPendingLawyers(data.lawyers || [])
+    setPendingFirms(data.firms || [])
   }
 
   // Approving a new account emails it «تم تأكيد حسابك» with a link to subscribe.
@@ -150,15 +143,19 @@ export default function AdminDashboardPage() {
     await loadPendingAccounts()
   }
 
+  // Everything the dashboard counts, in one admin-only call (not limited to 1000 rows).
   async function loadCompedLists() {
-    const lawyersResult = await supabase.from('lawyers').select('id, full_name, is_comped, is_active, city, specialty_id, created_at')
-    const firmsResult = await supabase.from('firms').select('id, firm_name, is_comped, is_active, city, created_at')
-    setAllLawyers(lawyersResult.data || [])
-    setAllFirms(firmsResult.data || [])
-    setLawyerCities((lawyersResult.data || []).map(function (l: LawyerRow) { return { city: l.city, specialty_id: l.specialty_id, id: l.id } }))
-    setFirmCities((firmsResult.data || []).map(function (f: FirmRow) { return { city: f.city } }))
-    setLawyerCreated((lawyersResult.data || []).map(function (l: LawyerRow) { return { created_at: l.created_at } }))
-    setFirmCreated((firmsResult.data || []).map(function (f: FirmRow) { return { created_at: f.created_at } }))
+    const result = await supabase.rpc('admin_dataset')
+    const data = (result.data || {}) as { lawyers?: LawyerRow[]; firms?: FirmRow[] }
+    const lawyerRows: LawyerRow[] = data.lawyers || []
+    const firmRows: FirmRow[] = data.firms || []
+    setAllLawyers(lawyerRows)
+    setAllFirms(firmRows)
+    setLawyerCities(lawyerRows.map(function (l: LawyerRow) { return { city: l.city, specialty_id: l.specialty_id, id: l.id } }))
+    setFirmCities(firmRows.map(function (f: FirmRow) { return { city: f.city } }))
+    setLawyerCreated(lawyerRows.map(function (l: LawyerRow) { return { created_at: l.created_at } }))
+    setFirmCreated(firmRows.map(function (f: FirmRow) { return { created_at: f.created_at } }))
+    return result.data
   }
 
   useEffect(function () {
@@ -179,30 +176,25 @@ export default function AdminDashboardPage() {
 
       setIsAdmin(true)
 
-      const paymentsResult = await supabase.from('payments').select('*')
-      const subsResult = await supabase.from('subscriptions').select('*')
+      const dataset = ((await loadCompedLists()) || {}) as {
+        payments?: any[]; subscriptions?: any[]; customers?: { created_at: string | null }[];
+        appointments?: AppointmentRow[]; lawyers?: any[]; firms?: any[]
+      }
 
-      const customersFullResult = await supabase.from('customers').select('id, created_at')
-      const lawyersCountResult = await supabase.from('lawyers').select('id', { count: 'exact', head: true })
-      const firmsCountResult = await supabase.from('firms').select('id', { count: 'exact', head: true })
-
-      setPayments((paymentsResult.data || []).map(function (p: any) { return toJod(p, 'amount') }))
-      setSubscriptions((subsResult.data || []).map(function (x: any) { return toJod(x, 'price') }))
-      setCustomerCount((customersFullResult.data || []).length)
-      setCustomerCreated((customersFullResult.data || []).map(function (c: { created_at: string | null }) { return { created_at: c.created_at } }))
-      setLawyerCount(lawyersCountResult.count || 0)
-      setFirmCount(firmsCountResult.count || 0)
+      setPayments((dataset.payments || []).map(function (p: any) { return toJod(p, 'amount') }))
+      setSubscriptions((dataset.subscriptions || []).map(function (x: any) { return toJod(x, 'price') }))
+      setCustomerCount((dataset.customers || []).length)
+      setCustomerCreated((dataset.customers || []).map(function (c: { created_at: string | null }) { return { created_at: c.created_at } }))
+      setLawyerCount((dataset.lawyers || []).length)
+      setFirmCount((dataset.firms || []).length)
+      setAppointments(dataset.appointments || [])
 
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
 
-      const appointmentsResult = await supabase.from('appointments').select('id, lawyer_id, specialty_id')
-      setAppointments(appointmentsResult.data || [])
-
       const discountsResult = await supabase.from('discounts').select('*')
       setDiscounts(discountsResult.data || [])
 
-      await loadCompedLists()
       await loadPendingAccounts()
 
       setLoading(false)

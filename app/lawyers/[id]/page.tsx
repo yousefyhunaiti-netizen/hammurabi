@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
+import { myLawyer, myFirm } from '../../lib/me'
 import Footer from '../../components/Footer'
 import { safeLink } from '../../lib/safeLink'
 import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
@@ -34,6 +35,7 @@ type Lawyer = {
   country: string | null
   timezone: string | null
   languages: string[] | null
+  firm_id: number | null
 }
 
 type Specialty = {
@@ -45,7 +47,7 @@ type Review = {
   id: number
   rating: number
   comment: string | null
-  customer_id: string
+  customer_id?: string
 }
 
 const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
@@ -56,6 +58,7 @@ export default function LawyerDetailPage() {
   const lawyerId = Number(params.id)
 
   const [lawyer, setLawyer] = useState<Lawyer | null>(null)
+  const [firmInfo, setFirmInfo] = useState<{ id: number; firm_name: string } | null>(null)
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
@@ -103,24 +106,29 @@ export default function LawyerDetailPage() {
         if (customerResult.data) {
           setInfoLink('/my-info')
         } else {
-          const lawyerAcctResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+          const lawyerAcctResult = await myLawyer(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerAcctResult.data) {
             setInfoLink('/lawyer-info')
           } else {
-            const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+            const firmResult = await myFirm(supabase).select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) setInfoLink('/firm-info')
           }
         }
       }
       setCheckingAuth(false)
 
-      const lawyerResult = await supabase.from('lawyers').select('*').eq('id', lawyerId).single()
+      const lawyerResult = await supabase.from('lawyers').select('id, full_name, bio, specialty_id, specialty_ids, city, cities, address, phone, consultation_fee, hourly_rate_range, years_experience, bar_certificate_number, working_days, working_hours_start, working_hours_end, vacation_until, google_maps_link, website_url, photo_url, country, timezone, languages, firm_id').eq('id', lawyerId).single()
       setLawyer(lawyerResult.data)
+      // the firm the lawyer works with, if any
+      if (lawyerResult.data && lawyerResult.data.firm_id) {
+        const firmResult = await supabase.from('firms').select('id, firm_name').eq('id', lawyerResult.data.firm_id).eq('is_approved', true).eq('is_active', true).maybeSingle()
+        setFirmInfo(firmResult.data || null)
+      }
 
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
 
-      const reviewsResult = await supabase.from('reviews').select('*').eq('lawyer_id', lawyerId)
+      const reviewsResult = await supabase.from('reviews').select('id, rating, comment').eq('lawyer_id', lawyerId).order('created_at', { ascending: false }).limit(200)
       setReviews(reviewsResult.data || [])
 
       if (lawyerResult.data) {
@@ -392,6 +400,9 @@ export default function LawyerDetailPage() {
           <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
             <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-4">التفاصيل</h2>
             <div className="grid grid-cols-2 gap-4 font-['Tajawal'] text-sm mb-4">
+              {firmInfo && (
+                <div className="col-span-2"><p className="text-[#4A473F]">المكتب</p><a href={'/firms/' + firmInfo.id} className="text-[#2F4538] font-medium hover:underline">🏛 {firmInfo.firm_name}</a></div>
+              )}
               <div><p className="text-[#4A473F]">سنوات الخبرة</p><p className="text-[#1B1A17] font-medium">{lawyer.years_experience || 0}</p></div>
               <div><p className="text-[#4A473F]">{isInternational(lawyer.country) ? 'رقم الترخيص' : 'الرقم النقابي'}</p><p className="text-[#1B1A17] font-medium">{lawyer.bar_certificate_number || '-'}</p></div>
               <div><p className="text-[#4A473F]">المدينة</p><p className="text-[#1B1A17] font-medium">{isInternational(lawyer.country) ? countryName(lawyer.country) + (getAllCities() ? '، ' + getAllCities() : '') : getAllCities()}</p></div>

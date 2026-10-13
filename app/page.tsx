@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from './lib/supabase'
+import { myLawyer, myFirm } from './lib/me'
 import { getLawyerBadgeCount, getFirmBadgeCount } from './lib/badges'
 import Footer from './components/Footer'
 import HeaderLines from './components/HeaderLines'
@@ -38,14 +39,14 @@ export default function HomePage() {
         if (customerResult.data) {
           setAccount('customer')
         } else {
-          const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+          const lawyerResult = await myLawyer(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setAccount('lawyer')
             const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
             setTotalUnread(countConversations(unreadResult.data || []))
             setBadgeCount(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
           } else {
-            const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+            const firmResult = await myFirm(supabase).select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) {
               setAccount('firm')
               const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_firm_id', firmResult.data.id).eq('is_read', false)

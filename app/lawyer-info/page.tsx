@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer } from '../lib/me'
 import { getLawyerBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import DeleteAccount from '../components/DeleteAccount'
@@ -86,8 +87,7 @@ export default function LawyerInfoPage() {
       return
     }
 
-    const lawyerResult = await supabase
-      .from('lawyers')
+    const lawyerResult = await myLawyer(supabase)
       .select('*')
       .eq('user_id', userResult.data.user.id)
       .maybeSingle()

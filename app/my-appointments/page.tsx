@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import Footer from '../components/Footer'
 import RatingForm, { RatingStars } from '../components/RatingForm'
 import HeaderLines from '../components/HeaderLines'
@@ -82,13 +84,13 @@ export default function MyAppointmentsPage() {
         return
       }
 
-      const lawyerCheck = await supabase.from('lawyers').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      const lawyerCheck = await myLawyer(supabase).select('id').eq('user_id', userResult.data.user.id).maybeSingle()
       if (lawyerCheck.data) {
         router.push('/lawyer-calendar')
         return
       }
 
-      const firmCheck = await supabase.from('firms').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+      const firmCheck = await myFirm(supabase).select('id').eq('user_id', userResult.data.user.id).maybeSingle()
       if (firmCheck.data) {
         router.push('/lawyer-history')
         return
@@ -103,11 +105,11 @@ export default function MyAppointmentsPage() {
         setMyRatings(ratingsMap)
       }
 
-      const apptResult = await supabase
+      const apptResult = await fetchAll(function (from, to) { return supabase
         .from('appointments')
         .select('*')
-        .eq('customer_id', userResult.data.user.id)
-        .order('appointment_date', { ascending: true })
+        .eq('customer_id', userResult.data.user!.id)
+        .order('appointment_date', { ascending: true }).order('id').range(from, to) })
 
       const data = apptResult.data || []
       setAppointments(data)

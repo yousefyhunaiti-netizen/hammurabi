@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
+import { myLawyer, myFirm } from '../../lib/me'
 import Footer from '../../components/Footer'
 import { safeLink } from '../../lib/safeLink'
 import BookingGuide, { ConsultationFeeNote } from '../../components/BookingGuide'
@@ -17,7 +18,7 @@ type Firm = {
   city: string | null
   address: string | null
   phone: string | null
-  email: string | null
+  email?: string | null
   google_maps_link: string | null
   website_url: string | null
   show_lawyer_names: boolean | null
@@ -112,11 +113,11 @@ export default function FirmDetailPage() {
         if (customerResult.data) {
           setInfoLink('/my-info')
         } else {
-          const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+          const lawyerResult = await myLawyer(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setInfoLink('/lawyer-info')
           } else {
-            const firmAcctResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+            const firmAcctResult = await myFirm(supabase).select('id').eq('user_id', user.id).maybeSingle()
             if (firmAcctResult.data) {
               setInfoLink('/firm-info')
             }
@@ -126,10 +127,10 @@ export default function FirmDetailPage() {
 
       setCheckingAuth(false)
 
-      const firmResult = await supabase.from('firms').select('*').eq('id', firmId).single()
+      const firmResult = await supabase.from('firms').select('id, firm_name, bio, city, address, phone, google_maps_link, website_url, show_lawyer_names, founded_year, country, timezone, languages').eq('id', firmId).single()
       setFirm(firmResult.data)
 
-      const reviewsResult = await supabase.from('reviews').select('id, rating, comment').eq('firm_id', firmId).order('created_at', { ascending: false })
+      const reviewsResult = await supabase.from('reviews').select('id, rating, comment').eq('firm_id', firmId).order('created_at', { ascending: false }).limit(200)
       setReviews(reviewsResult.data || [])
 
       const specialtiesResult = await supabase.from('specialties').select('*')

@@ -24,14 +24,19 @@ export async function POST(request: NextRequest) {
     return plainMessage('لقد وصلت إلى الحد اليومي لاستخدام المساعد الذكي. يمكنك المتابعة غداً.', 429)
   }
 
-  const body = await request.json()
+  let body: { message?: unknown; history?: unknown } = {}
+  try {
+    body = await request.json()
+  } catch (e) {
+    return plainMessage('يرجى كتابة سؤالك.', 400)
+  }
   const userMessage = String(body.message || '').slice(0, 2000)
   if (!userMessage.trim()) {
     return plainMessage('يرجى كتابة سؤالك.', 400)
   }
 
   // Keep only the recent, well-formed part of the conversation.
-  const rawHistory: unknown[] = Array.isArray(body.history) ? body.history.slice(-20) : []
+  const rawHistory: unknown[] = Array.isArray(body.history) ? (body.history as unknown[]).slice(-20) : []
   const history = rawHistory
     .filter(function (h): h is { role: string; text: string } {
       const item = h as { role?: unknown; text?: unknown }
@@ -130,34 +135,54 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
 
+  // Turns one "data: {...}" line from Gemini into text. An answer can come in
+  // several parts per chunk (and "thinking" parts that aren't shown), so every
+  // visible part is used, not only the first one.
+  function textOf(line: string) {
+    const clean = line.replace(/\r$/, '')
+    if (!clean.startsWith('data:')) return ''
+    const jsonStr = clean.slice(5).trim()
+    if (!jsonStr) return ''
+    try {
+      const parsed = JSON.parse(jsonStr)
+      const parts = parsed?.candidates?.[0]?.content?.parts || []
+      let text = ''
+      for (const part of parts) {
+        if (part && typeof part.text === 'string' && !part.thought) text = text + part.text
+      }
+      return text
+    } catch (e) {
+      return ''
+    }
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       const reader = geminiResponse.body!.getReader()
       let buffer = ''
 
-      while (true) {
-        const result = await reader.read()
-        if (result.done) break
+      try {
+        while (true) {
+          const result = await reader.read()
+          if (result.done) break
 
-        buffer = buffer + decoder.decode(result.value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+          buffer = buffer + decoder.decode(result.value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const jsonStr = line.slice(6).trim()
-          if (!jsonStr) continue
-
-          try {
-            const parsed = JSON.parse(jsonStr)
-            const textPiece = parsed?.candidates?.[0]?.content?.parts?.[0]?.text
-            if (textPiece) {
-              controller.enqueue(encoder.encode(textPiece))
-            }
-          } catch (e) {
-            // ignore malformed partial chunk
+          for (const line of lines) {
+            const piece = textOf(line)
+            if (piece) controller.enqueue(encoder.encode(piece))
           }
         }
+        // the last line often has no line break after it: don't drop it
+        buffer = buffer + decoder.decode()
+        if (buffer.trim()) {
+          const piece = textOf(buffer)
+          if (piece) controller.enqueue(encoder.encode(piece))
+        }
+      } catch (e) {
+        controller.enqueue(encoder.encode('\n\n(انقطع الاتصال قبل اكتمال الإجابة، حاول مرة أخرى.)'))
       }
 
       controller.close()

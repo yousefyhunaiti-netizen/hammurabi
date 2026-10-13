@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer } from '../lib/me'
 import { lawyerStage, stagePath } from '../lib/accountStage'
 import OnboardingSteps from '../components/OnboardingSteps'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
+import { getLawyerBadgeCount } from '../lib/badges'
 import LocationFields from '../components/LocationFields'
 import { uploadOwnFile, openPrivateFile } from '../lib/files'
 import { isInternational, currencyLabel, currencyOf, HOME_COUNTRY, HOME_TIMEZONE } from '../lib/international'
@@ -67,6 +69,17 @@ export default function LawyerDashboardPage() {
   const [onboarding, setOnboarding] = useState(false)
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
+  const [totalUnread, setTotalUnread] = useState(0)
+  const [pendingConsultations, setPendingConsultations] = useState(0)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function () {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return function () { document.removeEventListener('mousedown', handleClickOutside) }
+  }, [])
 
   const [fullName, setFullName] = useState('')
   const [bio, setBio] = useState('')
@@ -107,8 +120,7 @@ export default function LawyerDashboardPage() {
         return
       }
 
-      const lawyerResult = await supabase
-        .from('lawyers')
+      const lawyerResult = await myLawyer(supabase)
         .select('*')
         .eq('user_id', userResult.data.user.id)
         .single()
@@ -171,6 +183,14 @@ export default function LawyerDashboardPage() {
 
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
+
+      if (!inSignup) {
+        const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
+        setTotalUnread(new Set((unreadResult.data || []).map(function (m: { sender_lawyer_id: number | null; sender_firm_id: number | null }) {
+          return m.sender_lawyer_id ? 'lawyer-' + m.sender_lawyer_id : 'firm-' + m.sender_firm_id
+        })).size)
+        setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
+      }
 
       setLoading(false)
     }
@@ -286,7 +306,7 @@ export default function LawyerDashboardPage() {
 
     if (onboarding) {
       // on to the next sign-up step (usually «قيد المراجعة»)
-      const fresh = await supabase.from('lawyers').select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url').eq('id', lawyer.id).maybeSingle()
+      const fresh = await myLawyer(supabase).select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url').eq('id', lawyer.id).maybeSingle()
       router.push(fresh.data ? stagePath('lawyer', lawyerStage(fresh.data)) : '/account-review')
       return
     }
@@ -339,19 +359,34 @@ export default function LawyerDashboardPage() {
               <button onClick={handleLogout} className="text-[#D8D2C4] hover:text-[#AD8A4E] transition">تسجيل الخروج</button>
             ) : (
             <div className="flex gap-5 items-center">
-              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
-              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
-              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/lawyer-tools" className="hover:text-[#AD8A4E] transition">أدواتي</a>
+              <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/community" className="hover:text-[#AD8A4E] transition">المجتمع</a>
-              <a href="/lawyer-messages" className="hover:text-[#AD8A4E] transition">الرسائل</a>
-              <div className="relative">
-                <button onClick={toggleMenu} className="w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
+              <a href="/lawyer-messages" className="relative hover:text-[#AD8A4E] transition">
+                <svg className="w-5 h-5 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                </svg>
+                {totalUnread > 0 && (
+                  <span className="absolute -top-2 -left-2 bg-[#7A2E2E] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{totalUnread}</span>
+                )}
+              </a>
+              <div className="relative" ref={menuRef}>
+                <button onClick={toggleMenu} className="relative w-8 h-8 rounded-full bg-[#AD8A4E] flex items-center justify-center hover:bg-[#c49b58] transition">
                   <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.5c-3.3 0-9.8 1.6-9.8 4.9v2.4h19.6v-2.4c0-3.3-6.5-4.9-9.8-4.9z" /></svg>
+                  {pendingConsultations > 0 && (
+                    <span className="absolute -top-1 -left-1 bg-[#7A2E2E] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingConsultations}</span>
+                  )}
                 </button>
                 {menuOpen && (
                   <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-[#D8D2C4] rounded-md shadow-lg overflow-hidden z-20">
-                    <a href="/lawyer-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">معلوماتي الشخصية</a>
+                    <a href="/subscription" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition">ترقية الاشتراك</a>
+                    <a href="/lawyer-info" className="block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">معلوماتي الشخصية</a>
+                    <a href="/lawyer-history" className="relative block px-4 py-3 font-['Tajawal'] text-sm text-[#1B1A17] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">
+                      المواعيد والاستشارات
+                      {pendingConsultations > 0 && (
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 bg-[#7A2E2E] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{pendingConsultations}</span>
+                      )}
+                    </a>
                     <button onClick={handleLogout} className="w-full text-right px-4 py-3 font-['Tajawal'] text-sm text-[#7A2E2E] hover:bg-[#F3EEE4] transition border-t border-[#D8D2C4]">تسجيل الخروج</button>
                   </div>
                 )}

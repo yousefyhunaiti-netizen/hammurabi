@@ -23,7 +23,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const payload = await request.json()
+  let payload: { type?: unknown; lawyer_email?: string; customer_email?: string } = {}
+  try {
+    payload = await request.json()
+  } catch (e) {
+    return NextResponse.json({ error: 'bad request' }, { status: 400 })
+  }
   const eventType = payload.type
 
   // The question itself is never put in an email: the lawyer reads it on the site.

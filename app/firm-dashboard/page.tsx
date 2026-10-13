@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import { getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import OnboardingSteps from '../components/OnboardingSteps'
@@ -69,6 +71,11 @@ export default function FirmDashboardPage() {
   const [notFirm, setNotFirm] = useState(false)
   // a new firm still in sign-up: this page is step ١ «معلوماتك»
   const [onboarding, setOnboarding] = useState(false)
+  // opened from «معلوماتي الشخصية» → «تعديل المعلومات»
+  const [editingProfile, setEditingProfile] = useState(false)
+  useEffect(function () {
+    setEditingProfile(new URLSearchParams(window.location.search).get('edit') === '1')
+  }, [])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [roster, setRoster] = useState<FirmLawyer[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
@@ -123,10 +130,10 @@ export default function FirmDashboardPage() {
     if (rosterIds.length > 0) {
       filter = filter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
     }
-    const result = await supabase
+    const result = await fetchAll(function (from, to) { return supabase
       .from('consultations')
       .select('id, question, status, lawyer_id, answer, reviewer_id, review_due_at')
-      .or(filter)
+      .or(filter).order('id').range(from, to) })
     setFirmConsultations(result.data || [])
   }
 
@@ -140,8 +147,7 @@ export default function FirmDashboardPage() {
         return
       }
 
-      const firmResult = await supabase
-        .from('firms')
+      const firmResult = await myFirm(supabase)
         .select('id, firm_name, show_lawyer_names, bio, address, city, phone, founded_year, google_maps_link, website_url, answer_hours, review_hours, needs_onboarding, is_approved, is_active, is_comped, country, timezone, languages')
         .eq('user_id', userResult.data.user.id)
         .single()
@@ -187,12 +193,6 @@ export default function FirmDashboardPage() {
 
       const rosterIds = await loadRoster(firmResult.data.id)
       await loadConsultations(firmResult.data.id, rosterIds)
-
-      const allLawyersResult = await supabase
-        .from('lawyers')
-        .select('id, full_name, city, specialty_id, firm_id, pending_firm_id')
-
-      setAllLawyers(allLawyersResult.data || [])
 
       setLoading(false)
     }
@@ -261,19 +261,35 @@ export default function FirmDashboardPage() {
     setProfileSaving(false)
     setProfileMessage('تم حفظ معلومات المكتب بنجاح')
 
+    if (!onboarding && editingProfile) {
+      router.push('/firm-info')
+      return
+    }
+
     if (onboarding) {
       // on to the next sign-up step (usually «قيد المراجعة»)
-      const fresh = await supabase.from('firms').select('needs_onboarding, city, address, phone, is_approved, is_active, is_comped').eq('id', firm.id).maybeSingle()
+      const fresh = await myFirm(supabase).select('needs_onboarding, city, address, phone, is_approved, is_active, is_comped').eq('id', firm.id).maybeSingle()
       router.push(fresh.data ? stagePath('firm', firmStage(fresh.data as any)) : '/account-review')
     }
   }
 
+  // The database searches lawyers by name (20 results), instead of loading every lawyer.
+  useEffect(function () {
+    const term = searchTerm.trim()
+    if (!term) {
+      setAllLawyers([])
+      return
+    }
+    const timer = setTimeout(async function () {
+      const result = await supabase.rpc('firm_find_lawyers', { p_query: term })
+      setAllLawyers((result.data as SearchResult[]) || [])
+    }, 300)
+    return function () { clearTimeout(timer) }
+  }, [searchTerm])
+
   function getSearchResults() {
     if (!searchTerm.trim()) return []
-    const lower = searchTerm.toLowerCase()
-    return allLawyers.filter(function (l) {
-      return l.full_name.toLowerCase().indexOf(lower) !== -1
-    })
+    return allLawyers
   }
 
   async function handleInvite(lawyer: SearchResult) {
@@ -665,8 +681,15 @@ export default function FirmDashboardPage() {
       )}
 
       <div className="max-w-4xl mx-auto px-6 py-10 flex-1 w-full">
-        {renderProfileEditor()}
+        {editingProfile && (
+          <div>
+            <a href="/firm-info" className="inline-block font-['Tajawal'] text-sm text-[#AD8A4E] mb-4 hover:underline">← العودة إلى معلومات المكتب</a>
+            {renderProfileEditor()}
+          </div>
+        )}
 
+        {!editingProfile && (
+        <div>
         <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
@@ -747,6 +770,8 @@ export default function FirmDashboardPage() {
 
           {getSearchResults().map(renderSearchResult)}
         </div>
+        </div>
+        )}
       </div>
 
       <Footer variant="firm" />

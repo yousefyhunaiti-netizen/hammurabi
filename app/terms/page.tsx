@@ -1,11 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
 
 export default function TermsPage() {
   const [tab, setTab] = useState('general')
+
+  // /terms?tab=ai opens a tab directly (the AI assistant's «اقرأ المزيد» links here)
+  useEffect(function () {
+    const wanted = new URLSearchParams(window.location.search).get('tab')
+    if (wanted && ['general', 'lawyers', 'firms', 'customers', 'ai'].indexOf(wanted) !== -1) setTab(wanted)
+  }, [])
 
   function tabButtonClass(tabName: string) {
     return "px-4 py-2 rounded-md font-['Tajawal'] text-sm font-medium transition " + (tab === tabName ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')

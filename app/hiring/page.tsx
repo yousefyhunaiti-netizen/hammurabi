@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
@@ -110,12 +111,12 @@ export default function HiringPage() {
   }
 
   async function loadBoard() {
-    const postsResult = await supabase.from('job_posts').select('*').order('created_at', { ascending: false })
+    const postsResult = await supabase.from('job_posts').select('*').order('created_at', { ascending: false }).limit(200)
     const postRows: JobPost[] = postsResult.data || []
     setPosts(postRows)
 
     // Applications I sent, plus applications to my own posts (the database only returns those).
-    const appsResult = await supabase.from('job_applications').select('*').order('created_at', { ascending: false })
+    const appsResult = await supabase.from('job_applications').select('*').order('created_at', { ascending: false }).limit(500)
     const appRows: Application[] = appsResult.data || []
     setApplications(appRows)
 
@@ -124,8 +125,12 @@ export default function HiringPage() {
         .concat(appRows.map(function (a) { return a.lawyer_id }))
     ))
     if (lawyerIds.length > 0) {
-      const peopleResult = await supabase.from('lawyers').select('id, full_name, phone, email, is_trainee').in('id', lawyerIds)
-      setPeople(peopleResult.data || [])
+      const peopleResult = await supabase.from('lawyers').select('id, full_name, phone, is_trainee').in('id', lawyerIds)
+      // email addresses are private: the database gives them only to the poster, for their own applicants
+      const contactsResult = await supabase.rpc('my_applicant_emails')
+      const emails: { [id: number]: string } = {}
+      ;((contactsResult.data as { lawyer_id: number; email: string }[]) || []).forEach(function (c) { emails[c.lawyer_id] = c.email })
+      setPeople((peopleResult.data || []).map(function (p: any) { return Object.assign({}, p, { email: emails[p.id] || null }) }))
     } else {
       setPeople([])
     }
@@ -161,7 +166,7 @@ export default function HiringPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_trainee').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_trainee').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         setAccountType('lawyer')
@@ -177,7 +182,7 @@ export default function HiringPage() {
         setTotalUnread(countConversations(unreadResult.data || []))
         setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
       } else {
-        const firmResult = await supabase.from('firms').select('id').eq('user_id', userId).maybeSingle()
+        const firmResult = await myFirm(supabase).select('id').eq('user_id', userId).maybeSingle()
 
         if (!firmResult.data) {
           setNotAllowed(true)
@@ -413,7 +418,10 @@ export default function HiringPage() {
         {!mine && applyingHere && (
           <div className="mt-2">
             <textarea value={applyNote} onChange={function (e) { setApplyNote(e.target.value) }} rows={3} placeholder="عرّف بنفسك باختصار (اختياري)" className="w-full px-3 py-2 mb-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-2">سيظهر لصاحب الفرصة اسمك ورقم هاتفك وبريدك الإلكتروني.</p>
+            <div className="bg-[#EEF3EF] border border-[#2F4538]/20 rounded-md px-3 py-2 mb-2">
+              <p className="font-['Tajawal'] text-xs text-[#2F4538] font-bold mb-0.5">🔒 طلبك سرّي</p>
+              <p className="font-['Tajawal'] text-xs text-[#2F4538] leading-relaxed">لا يرى طلبك إلا صاحب هذه الفرصة، فيظهر له اسمك ورقم هاتفك وبريدك الإلكتروني. لا يظهر طلبك لمكتبك الحالي ولا لأي محامٍ أو مكتب آخر على حمورابي.</p>
+            </div>
             <div className="flex gap-2">
               <button onClick={function () { setApplyingId(null) }} className="flex-1 py-2 bg-[#F3EEE4] text-[#4A473F] rounded-md font-['Tajawal'] text-sm">إلغاء</button>
               <button onClick={function () { handleApply(p.id) }} disabled={applyBusy} className="flex-1 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm disabled:opacity-60">إرسال الطلب</button>

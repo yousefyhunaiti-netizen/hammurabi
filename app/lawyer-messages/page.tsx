@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
@@ -99,6 +100,10 @@ export default function LawyerMessagesPage() {
   const threadScrollRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const lastMarkRef = useRef('')
+  const messagesRef = useRef<Message[]>([])
+  const lastMessageAtRef = useRef('')
+  const namesRef = useRef<{ [key: string]: Participant }>({})
+  const [searchResults, setSearchResults] = useState<Participant[]>([])
   const supabase = createClient()
   const router = useRouter()
 
@@ -114,18 +119,88 @@ export default function LawyerMessagesPage() {
     }
   }, [])
 
-  async function loadMessages(identity: Identity) {
+  // First load: the latest 1000 messages. After that, only what's new since the
+  // last check (plus read receipts for my unread sent messages), so polling stays light.
+  async function loadMessages(identity: Identity, onlyNew?: boolean) {
     const orFilter = identity.type === 'lawyer'
       ? 'sender_lawyer_id.eq.' + identity.id + ',recipient_lawyer_id.eq.' + identity.id
       : 'sender_firm_id.eq.' + identity.id + ',recipient_firm_id.eq.' + identity.id
+
+    if (onlyNew && lastMessageAtRef.current) {
+      const newResult = await supabase
+        .from('lawyer_messages')
+        .select('*')
+        .or(orFilter)
+        .gt('created_at', lastMessageAtRef.current)
+        .order('created_at', { ascending: true })
+        .limit(500)
+      const fresh: Message[] = newResult.data || []
+
+      const sentUnreadIds = messagesRef.current
+        .filter(function (m) { return !m.is_read && ((identity.type === 'lawyer' && m.sender_lawyer_id === identity.id) || (identity.type === 'firm' && m.sender_firm_id === identity.id)) })
+        .map(function (m) { return m.id })
+        .slice(-200)
+      let readIds: number[] = []
+      if (sentUnreadIds.length > 0) {
+        const receiptsResult = await supabase.from('lawyer_messages').select('id').in('id', sentUnreadIds).eq('is_read', true)
+        readIds = (receiptsResult.data || []).map(function (r: { id: number }) { return r.id })
+      }
+
+      if (fresh.length === 0 && readIds.length === 0) return
+      const known = new Set(messagesRef.current.map(function (m) { return m.id }))
+      const merged = messagesRef.current
+        .map(function (m) { return readIds.indexOf(m.id) !== -1 ? Object.assign({}, m, { is_read: true }) : m })
+        .concat(fresh.filter(function (m) { return !known.has(m.id) }))
+      applyMessages(merged)
+      await loadNames(merged, identity)
+      return
+    }
 
     const result = await supabase
       .from('lawyer_messages')
       .select('*')
       .or(orFilter)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(1000)
 
-    setMessages(result.data || [])
+    const rows: Message[] = (result.data || []).slice().reverse()
+    applyMessages(rows)
+    await loadNames(rows, identity)
+  }
+
+  function applyMessages(rows: Message[]) {
+    messagesRef.current = rows
+    if (rows.length > 0) lastMessageAtRef.current = rows[rows.length - 1].created_at
+    setMessages(rows)
+  }
+
+  // Names only for the people I actually talk to (not every lawyer on the site).
+  async function loadNames(rows: Message[], identity: Identity) {
+    const lawyerIds: number[] = []
+    const firmIds: number[] = []
+    rows.forEach(function (m) {
+      [m.sender_lawyer_id, m.recipient_lawyer_id].forEach(function (id) {
+        if (id && !(identity.type === 'lawyer' && id === identity.id) && lawyerIds.indexOf(id) === -1 && !namesRef.current['lawyer-' + id]) lawyerIds.push(id)
+      })
+      ;[m.sender_firm_id, m.recipient_firm_id].forEach(function (id) {
+        if (id && !(identity.type === 'firm' && id === identity.id) && firmIds.indexOf(id) === -1 && !namesRef.current['firm-' + id]) firmIds.push(id)
+      })
+    })
+    if (lawyerIds.length > 0) {
+      const r = await supabase.from('lawyers').select('id, full_name').in('id', lawyerIds)
+      addParticipants((r.data || []).map(function (l: { id: number; full_name: string }) { return { type: 'lawyer' as const, id: l.id, name: l.full_name } }))
+    }
+    if (firmIds.length > 0) {
+      const r = await supabase.from('firms').select('id, firm_name').in('id', firmIds)
+      addParticipants((r.data || []).map(function (f: { id: number; firm_name: string }) { return { type: 'firm' as const, id: f.id, name: f.firm_name } }))
+    }
+  }
+
+  function addParticipants(list: Participant[]) {
+    if (list.length === 0) return
+    list.forEach(function (p) { namesRef.current[p.type + '-' + p.id] = p })
+    setAllLawyers(Object.keys(namesRef.current).filter(function (k) { return k.indexOf('lawyer-') === 0 }).map(function (k) { return namesRef.current[k] }))
+    setAllFirms(Object.keys(namesRef.current).filter(function (k) { return k.indexOf('firm-') === 0 }).map(function (k) { return namesRef.current[k] }))
   }
 
   async function loadAnnouncements() {
@@ -143,7 +218,7 @@ export default function LawyerMessagesPage() {
         return
       }
 
-      const lawyerResult = await supabase.from('lawyers').select('id, full_name, last_seen_announcement_at').eq('user_id', userResult.data.user.id).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, full_name, last_seen_announcement_at').eq('user_id', userResult.data.user.id).maybeSingle()
 
       let foundIdentity: Identity | null = null
 
@@ -151,7 +226,7 @@ export default function LawyerMessagesPage() {
         foundIdentity = { type: 'lawyer', id: lawyerResult.data.id, name: lawyerResult.data.full_name }
         setLastSeenAnnouncementAt(lawyerResult.data.last_seen_announcement_at)
       } else {
-        const firmResult = await supabase.from('firms').select('id, firm_name, last_seen_announcement_at').eq('user_id', userResult.data.user.id).maybeSingle()
+        const firmResult = await myFirm(supabase).select('id, firm_name, last_seen_announcement_at').eq('user_id', userResult.data.user.id).maybeSingle()
         if (firmResult.data) {
           foundIdentity = { type: 'firm', id: firmResult.data.id, name: firmResult.data.firm_name }
           setLastSeenAnnouncementAt(firmResult.data.last_seen_announcement_at)
@@ -166,18 +241,6 @@ export default function LawyerMessagesPage() {
 
       const me: Identity = foundIdentity
       setMyIdentity(me)
-
-      const lawyersResult = await supabase.from('lawyers').select('id, full_name')
-      const lawyerParticipants: Participant[] = (lawyersResult.data || [])
-        .filter(function (l) { return !(me.type === 'lawyer' && l.id === me.id) })
-        .map(function (l) { return { type: 'lawyer' as const, id: l.id, name: l.full_name } })
-      setAllLawyers(lawyerParticipants)
-
-      const firmsResult = await supabase.from('firms').select('id, firm_name')
-      const firmParticipants: Participant[] = (firmsResult.data || [])
-        .filter(function (f) { return !(me.type === 'firm' && f.id === me.id) })
-        .map(function (f) { return { type: 'firm' as const, id: f.id, name: f.firm_name } })
-      setAllFirms(firmParticipants)
 
       if (me.type === 'lawyer') {
         setPendingConsultations(await getLawyerBadgeCount(supabase, me.id))
@@ -198,7 +261,7 @@ export default function LawyerMessagesPage() {
     const identity = myIdentity
     const timer = setInterval(function () {
       if (document.hidden) return
-      loadMessages(identity)
+      loadMessages(identity, true)
     }, 10000)
     return function () {
       clearInterval(timer)
@@ -254,9 +317,16 @@ export default function LawyerMessagesPage() {
 
     if (updateResult.error) {
       console.error('Failed to mark messages as read:', updateResult.error.message)
+      return
     }
 
-    await loadMessages(identity)
+    // update the list on screen instead of downloading every message again
+    const isMe = function (id: number | null) { return id === identity.id }
+    const fromPartner = function (m: Message) { return partner.type === 'lawyer' ? m.sender_lawyer_id === partner.id : m.sender_firm_id === partner.id }
+    applyMessages(messagesRef.current.map(function (m) {
+      const toMe = identity.type === 'lawyer' ? isMe(m.recipient_lawyer_id) : isMe(m.recipient_firm_id)
+      return toMe && fromPartner(m) && !m.is_read ? Object.assign({}, m, { is_read: true }) : m
+    }))
   }
 
   async function handleSend() {
@@ -297,7 +367,7 @@ export default function LawyerMessagesPage() {
     if (composerRef.current) {
       composerRef.current.style.height = 'auto'
     }
-    await loadMessages(myIdentity)
+    await loadMessages(myIdentity, true)
     setSending(false)
   }
 
@@ -374,11 +444,30 @@ export default function LawyerMessagesPage() {
   })
 
   const searchTerm = search.trim().toLowerCase()
-  const searchResults = searchTerm
-    ? allLawyers.concat(allFirms).filter(function (p) {
-        return p.name.toLowerCase().indexOf(searchTerm) !== -1
-      }).slice(0, 20)
-    : []
+
+  // Starting a new conversation: the database searches names (20 results at most).
+  useEffect(function () {
+    const term = search.trim()
+    if (!term || !myIdentity) {
+      setSearchResults([])
+      return
+    }
+    const me = myIdentity
+    const timer = setTimeout(async function () {
+      const pattern = '%' + term.replace(/[%_\\]/g, '') + '%'
+      const lawyersResult = await supabase.from('lawyers').select('id, full_name').ilike('full_name', pattern).eq('is_approved', true).limit(15)
+      const firmsResult = await supabase.from('firms').select('id, firm_name').ilike('firm_name', pattern).eq('is_approved', true).limit(10)
+      const found: Participant[] = (lawyersResult.data || [])
+        .filter(function (l: { id: number }) { return !(me.type === 'lawyer' && l.id === me.id) })
+        .map(function (l: { id: number; full_name: string }): Participant { return { type: 'lawyer', id: l.id, name: l.full_name } })
+        .concat((firmsResult.data || [])
+          .filter(function (f: { id: number }) { return !(me.type === 'firm' && f.id === me.id) })
+          .map(function (f: { id: number; firm_name: string }): Participant { return { type: 'firm', id: f.id, name: f.firm_name } }))
+      addParticipants(found)
+      setSearchResults(found.slice(0, 20))
+    }, 300)
+    return function () { clearTimeout(timer) }
+  }, [search, myIdentity])
 
   const threadMessages = messages.filter(function (m) {
     if (!selectedPartner || !myIdentity) return false
@@ -572,7 +661,7 @@ export default function LawyerMessagesPage() {
 
   return (
     <div dir="rtl" className="min-h-screen pattern-bg flex flex-col">
-      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6">
+      <div className="hm-header bg-[#1B1A17] text-[#F3EEE4] py-12 px-6" style={{ zIndex: 30 }}>
         <HeaderLines />
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">

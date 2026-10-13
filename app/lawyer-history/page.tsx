@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll, fetchByIds } from '../lib/fetchAll'
 import { markAppointmentsSeen } from '../lib/badges'
 import Footer from '../components/Footer'
 import Notifications, { OverdueAlert } from '../components/Notifications'
@@ -132,7 +134,7 @@ export default function LawyerHistoryPage() {
       let apptData: Appointment[] = []
       let consultData: Consultation[] = []
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, firm_id, specialty_id').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_active, is_comped, firm_id, specialty_id').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
@@ -144,7 +146,7 @@ export default function LawyerHistoryPage() {
         setAccountType('lawyer')
         setAccountId(lawyerResult.data.id)
 
-        const seenResult = await supabase.from('lawyers').select('last_seen_appointments_at').eq('id', lawyerResult.data.id).maybeSingle()
+        const seenResult = await myLawyer(supabase).select('last_seen_appointments_at').eq('id', lawyerResult.data.id).maybeSingle()
         setLastSeenAppointments(seenResult.data ? seenResult.data.last_seen_appointments_at : null)
 
         const unreadResult = await supabase.from('lawyer_messages').select('sender_lawyer_id, sender_firm_id').eq('recipient_lawyer_id', lawyerResult.data.id).eq('is_read', false)
@@ -155,18 +157,18 @@ export default function LawyerHistoryPage() {
           lawyerAppFilter = lawyerAppFilter + ',and(lawyer_id.is.null,firm_id.eq.' + lawyerResult.data.firm_id + ',specialty_id.eq.' + lawyerResult.data.specialty_id + ')'
         }
 
-        const apptResult = await supabase
+        const apptResult = await fetchAll(function (from, to) { return supabase
           .from('appointments')
           .select('*')
           .or(lawyerAppFilter)
-          .order('appointment_date', { ascending: false })
+          .order('appointment_date', { ascending: false }).order('id').range(from, to) })
 
         // Their own consultations, plus answers a firm asked them (as a senior) to review.
-        const consultResult = await supabase
+        const consultResult = await fetchAll(function (from, to) { return supabase
           .from('consultations')
           .select('*')
-          .or('lawyer_id.eq.' + lawyerResult.data.id + ',reviewer_id.eq.' + lawyerResult.data.id)
-          .order('created_at', { ascending: false })
+          .or('lawyer_id.eq.' + lawyerResult.data!.id + ',reviewer_id.eq.' + lawyerResult.data!.id)
+          .order('created_at', { ascending: false }).order('id').range(from, to) })
 
         if (lawyerResult.data.firm_id) {
           const colleaguesResult = await supabase.from('lawyers').select('id, full_name, specialty_id, is_senior').eq('firm_id', lawyerResult.data.firm_id)
@@ -176,7 +178,7 @@ export default function LawyerHistoryPage() {
         apptData = apptResult.data || []
         consultData = consultResult.data || []
       } else {
-        const firmResult = await supabase.from('firms').select('*').eq('user_id', userId).maybeSingle()
+        const firmResult = await myFirm(supabase).select('*').eq('user_id', userId).maybeSingle()
 
         if (!firmResult.data) {
           setNotAllowed(true)
@@ -212,17 +214,17 @@ export default function LawyerHistoryPage() {
           firmFilter = firmFilter + ',lawyer_id.in.(' + rosterIds.join(',') + ')'
         }
 
-        const apptResult = await supabase
+        const apptResult = await fetchAll(function (from, to) { return supabase
           .from('appointments')
           .select('*')
           .or(firmFilter)
-          .order('appointment_date', { ascending: false })
+          .order('appointment_date', { ascending: false }).order('id').range(from, to) })
 
-        const consultResult = await supabase
+        const consultResult = await fetchAll(function (from, to) { return supabase
           .from('consultations')
           .select('*')
           .or(firmFilter)
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false }).order('id').range(from, to) })
 
         apptData = apptResult.data || []
         consultData = consultResult.data || []
@@ -240,7 +242,7 @@ export default function LawyerHistoryPage() {
       ))
 
       if (allCustomerIds.length > 0) {
-        const namesResult = await supabase.from('customers').select('user_id, full_name').in('user_id', allCustomerIds)
+        const namesResult = await fetchByIds(allCustomerIds, function (chunk, from, to) { return supabase.from('customers').select('user_id, full_name').in('user_id', chunk).order('user_id').range(from, to) })
         setCustomerNames(namesResult.data || [])
       }
 

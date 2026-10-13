@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import { authHeaders, uploadOwnFile, openPrivateFile } from '../lib/files'
 import { safeLink } from '../lib/safeLink'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
@@ -127,7 +129,7 @@ export default function LawyerLibraryPage() {
 
   async function loadItems(type: 'lawyer' | 'firm', id: number) {
     const column = type === 'firm' ? 'firm_id' : 'lawyer_id'
-    const result = await supabase.from('library_items').select('*').eq(column, id).order('created_at', { ascending: false })
+    const result = await fetchAll(function (from, to) { return supabase.from('library_items').select('*').eq(column, id).order('created_at', { ascending: false }).order('id').range(from, to) })
     setItems(result.data || [])
   }
 
@@ -143,7 +145,7 @@ export default function LawyerLibraryPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
       if (lawyerResult.data) setAbroad(isInternational(lawyerResult.data.country))
 
       if (lawyerResult.data) {
@@ -161,7 +163,7 @@ export default function LawyerLibraryPage() {
 
         setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
-        const casesResult = await supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', lawyerResult.data.id).order('id', { ascending: false })
+        const casesResult = await fetchAll(function (from, to) { return supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', lawyerResult.data!.id).order('id', { ascending: false }).range(from, to) })
         setCases(casesResult.data || [])
 
         await loadItems('lawyer', lawyerResult.data.id)
@@ -169,7 +171,7 @@ export default function LawyerLibraryPage() {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('*').eq('user_id', userId).maybeSingle()
+      const firmResult = await myFirm(supabase).select('*').eq('user_id', userId).maybeSingle()
       if (firmResult.data) setAbroad(isInternational(firmResult.data.country))
 
       if (!firmResult.data) {

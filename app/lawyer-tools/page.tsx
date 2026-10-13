@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import WorkspaceSwitch from '../components/WorkspaceSwitch'
@@ -83,6 +84,9 @@ export default function LawyerToolsPage() {
   const [accountType, setAccountType] = useState<'lawyer' | 'firm'>('lawyer')
   const [accountName, setAccountName] = useState('')
   const [lawyerId, setLawyerId] = useState<number | null>(null)
+  // private work left over after leaving a firm (or the firm deleting its account)
+  const [workspace, setWorkspace] = useState<{ in_firm: boolean; until: string | null; active: boolean; choice: string | null; has_private: boolean } | null>(null)
+  const [workspaceBusy, setWorkspaceBusy] = useState(false)
   const [country, setCountry] = useState('JO')
   const [pendingFirmId, setPendingFirmId] = useState<number | null>(null)
   const [pendingFirmName, setPendingFirmName] = useState('')
@@ -132,8 +136,7 @@ export default function LawyerToolsPage() {
 
     const userId = userResult.data.user.id
 
-    const lawyerResult = await supabase
-      .from('lawyers')
+    const lawyerResult = await myLawyer(supabase)
       .select('id, full_name, pending_firm_id, vacation_until, needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url')
       .eq('user_id', userId)
       .maybeSingle()
@@ -147,6 +150,8 @@ export default function LawyerToolsPage() {
 
       setAccountType('lawyer')
       setCountry(lawyerResult.data.country || 'JO')
+      const workspaceResult = await supabase.rpc('my_private_workspace')
+      setWorkspace(workspaceResult.data || null)
       setAccountName(lawyerResult.data.full_name)
       setLawyerId(lawyerResult.data.id)
       setCurrentVacation(lawyerResult.data.vacation_until || '')
@@ -168,7 +173,7 @@ export default function LawyerToolsPage() {
       return
     }
 
-    const firmResult = await supabase.from('firms').select('id, firm_name, needs_onboarding, city, address, phone, is_approved, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
+    const firmResult = await myFirm(supabase).select('id, firm_name, needs_onboarding, city, address, phone, is_approved, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
 
     if (!firmResult.data) {
       setNotAllowed(true)
@@ -404,6 +409,47 @@ export default function LawyerToolsPage() {
       )}
 
       <div className="max-w-4xl mx-auto px-6 py-10 flex-1 w-full">
+        {accountType === 'lawyer' && workspace && workspace.has_private && !workspace.in_firm && (workspace.choice !== 'keep' || !workspace.active) && (
+          <div className="bg-white border-2 border-[#AD8A4E] rounded-lg p-5 mb-6">
+            <p className="font-['Tajawal'] font-bold text-[#1B1A17] mb-1">مساحتك الخاصة بعد مغادرة المكتب</p>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed mb-4">
+              لم تعد ضمن مكتب، لذلك أُلغي تجديد حسابك الخاص. يمكنك دمج قضاياك وأعمالك الخاصة مع حسابك الرئيسي الآن
+              {workspace.active && workspace.until ? '، أو إبقاؤها منفصلة حتى ' + formatDateDisplay(workspace.until) + ' (نهاية المدة المدفوعة)' : '. انتهت المدة المدفوعة، فادمجها لتعود إلى الظهور'}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                disabled={workspaceBusy}
+                onClick={async function () {
+                  setWorkspaceBusy(true)
+                  await supabase.rpc('merge_private_workspace')
+                  const fresh = await supabase.rpc('my_private_workspace')
+                  setWorkspace(fresh.data || null)
+                  setWorkspaceBusy(false)
+                  window.dispatchEvent(new CustomEvent('hm:workspace', { detail: { privateMode: false } }))
+                }}
+                className="px-5 py-2 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition disabled:opacity-60"
+              >
+                دمج مع حسابي الرئيسي
+              </button>
+              {workspace.active && (
+                <button
+                  disabled={workspaceBusy}
+                  onClick={async function () {
+                    setWorkspaceBusy(true)
+                    await supabase.rpc('keep_private_workspace')
+                    const fresh = await supabase.rpc('my_private_workspace')
+                    setWorkspace(fresh.data || null)
+                    setWorkspaceBusy(false)
+                  }}
+                  className="px-5 py-2 bg-[#F3EEE4] text-[#4A473F] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm disabled:opacity-60"
+                >
+                  إبقاؤها منفصلة حتى نهاية المدة
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {accountType === 'lawyer' && <WorkspaceSwitch variant="card" />}
 
         {accountType === 'lawyer' && (

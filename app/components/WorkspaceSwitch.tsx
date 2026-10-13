@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '../lib/supabase'
+import { myLawyer } from '../lib/me'
 
 type Props = {
   // 'banner': a thin strip at the top of a tool page
@@ -55,8 +56,7 @@ export default function WorkspaceSwitch(props: Props) {
         return
       }
 
-      const lawyerResult = await supabase
-        .from('lawyers')
+      const lawyerResult = await myLawyer(supabase)
         .select('id, firm_id, private_mode, subaccount_until')
         .eq('user_id', userResult.data.user.id)
         .maybeSingle()
@@ -92,10 +92,12 @@ export default function WorkspaceSwitch(props: Props) {
     setSaving(true)
     setPrivateMode(value)
 
-    const result = await supabase.from('lawyers').update({ private_mode: value }).eq('id', lawyerId).select('private_mode')
+    const result = await supabase.from('lawyers').update({ private_mode: value }).eq('id', lawyerId).select('id')
+    // read the switch back: the database turns it off when the private account has expired
+    const check = result.error ? null : await myLawyer(supabase).select('private_mode').maybeSingle()
     setSaving(false)
 
-    if (result.error || !result.data || result.data.length === 0 || result.data[0].private_mode !== value) {
+    if (result.error || !result.data || result.data.length === 0 || !check || !check.data || check.data.private_mode !== value) {
       setPrivateMode(previous)
       return
     }

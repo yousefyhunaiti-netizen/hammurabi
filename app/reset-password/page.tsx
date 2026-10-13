@@ -50,12 +50,6 @@ export default function ResetPasswordPage() {
     <div dir="rtl" className="min-h-screen flex flex-col md:flex-row">
       <div className="relative isolate md:w-1/2 bg-[#1B1A17] text-[#F3EEE4] flex flex-col justify-center px-10 py-16 overflow-hidden">
         <HeaderLines />
-        <img
-          src="/scale.png"
-          alt=""
-          className="hidden md:block absolute left-10 bottom-10 w-48 h-48 lg:w-56 lg:h-56 opacity-25 pointer-events-none object-contain z-[1] hm-float"
-        />
-
         <div className="relative z-10 max-w-md mx-auto md:mx-0">
           <img src="/logo.png" alt="حمورابي" className="h-24 md:h-28 w-auto mb-3" />
           <div className="w-20 h-[3px] shimmer-line mb-6"></div>
@@ -65,8 +59,10 @@ export default function ResetPasswordPage() {
         </div>
       </div>
 
-      <div className="md:w-1/2 pattern-bg flex items-center justify-center px-6 py-16">
-        <div className="w-full max-w-sm">
+      <div className="relative overflow-hidden md:w-1/2 pattern-bg flex items-center justify-center px-6 py-16">
+        {/* the scale, very faint, behind the form */}
+        <img src="/scale.png" alt="" aria-hidden="true" className="absolute inset-0 m-auto w-[22rem] h-[22rem] md:w-[30rem] md:h-[30rem] object-contain opacity-[0.05] pointer-events-none select-none" />
+        <div className="relative z-10 w-full max-w-sm">
           {!done ? (
             <div>
               <h2 className="font-['Tajawal'] font-bold text-2xl text-[#1B1A17] mb-1">تعيين كلمة مرور جديدة</h2>

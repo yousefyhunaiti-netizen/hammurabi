@@ -1,4 +1,5 @@
 import { createClient } from './supabase'
+import { myLawyer, myFirm } from '../lib/me'
 
 type SupabaseClient = ReturnType<typeof createClient>
 
@@ -32,8 +33,8 @@ async function countNewAppointments(supabase: SupabaseClient, filter: string, la
 }
 
 export async function getLawyerBadgeCount(supabase: SupabaseClient, lawyerId: number) {
-  const lawyerResult = await supabase
-    .from('lawyers')
+  // the account's own row (private columns come only through my_lawyer)
+  const lawyerResult = await myLawyer(supabase)
     .select('firm_id, specialty_id, last_seen_appointments_at')
     .eq('id', lawyerId)
     .maybeSingle()
@@ -67,8 +68,7 @@ export async function getLawyerBadgeCount(supabase: SupabaseClient, lawyerId: nu
 }
 
 export async function getFirmBadgeCount(supabase: SupabaseClient, firmId: number) {
-  const firmResult = await supabase
-    .from('firms')
+  const firmResult = await myFirm(supabase)
     .select('last_seen_appointments_at')
     .eq('id', firmId)
     .maybeSingle()

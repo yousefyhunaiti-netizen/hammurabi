@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { uploadOwnFile } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
@@ -62,6 +63,8 @@ type Identity = {
   name: string
 }
 
+const FEED_PAGE = 30
+
 export default function CommunityPage() {
   const [loading, setLoading] = useState(true)
   const [notAllowed, setNotAllowed] = useState(false)
@@ -75,6 +78,11 @@ export default function CommunityPage() {
   const [likes, setLikes] = useState<Like[]>([])
   const [reposts, setReposts] = useState<Repost[]>([])
   const [comments, setComments] = useState<Comment[]>([])
+  // The feed loads the newest posts first and more on request, instead of every post ever.
+  const feedLimitRef = useRef(FEED_PAGE)
+  const [hasMoreFeed, setHasMoreFeed] = useState(false)
+  const [loadingMoreFeed, setLoadingMoreFeed] = useState(false)
+  const [topContributorKeys, setTopContributorKeys] = useState<string[]>([])
 
   const [searchTerm, setSearchTerm] = useState('')
   const [commentInput, setCommentInput] = useState('')
@@ -99,8 +107,9 @@ export default function CommunityPage() {
   const router = useRouter()
 
   async function loadFeed() {
-    const questionsResult = await supabase.from('community_questions').select('id, lawyer_id, title, body, created_at').order('created_at', { ascending: false })
-    const storiesResult = await supabase.from('success_stories').select('id, lawyer_id, firm_id, title, body, image_url, created_at').order('created_at', { ascending: false })
+    const limit = feedLimitRef.current
+    const questionsResult = await supabase.from('community_questions').select('id, lawyer_id, title, body, created_at').order('created_at', { ascending: false }).limit(limit)
+    const storiesResult = await supabase.from('success_stories').select('id, lawyer_id, firm_id, title, body, image_url, created_at').order('created_at', { ascending: false }).limit(limit)
 
     const qData = (questionsResult.data || []).map(function (q: any) {
       return { postSource: 'question', id: q.id, lawyer_id: q.lawyer_id, firm_id: null, title: q.title, body: q.body, created_at: q.created_at }
@@ -109,9 +118,11 @@ export default function CommunityPage() {
       return { postSource: 'story', id: s.id, lawyer_id: s.lawyer_id, firm_id: s.firm_id, title: s.title, body: s.body, image_url: s.image_url, created_at: s.created_at }
     })
 
-    const allPosts = qData.concat(sData).sort(function (a: Post, b: Post) {
+    const merged = qData.concat(sData).sort(function (a: Post, b: Post) {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
+    const allPosts = merged.slice(0, limit)
+    setHasMoreFeed(merged.length > limit || qData.length === limit || sData.length === limit)
 
     setPosts(allPosts)
 
@@ -132,14 +143,37 @@ export default function CommunityPage() {
       setFirms(firmsResult.data || [])
     }
 
-    const likesResult = await supabase.from('post_likes').select('post_type, post_id, lawyer_id, firm_id')
-    setLikes(likesResult.data || [])
+    // likes, reposts and comments only for the posts on screen
+    const postIds = Array.from(new Set(allPosts.map(function (p: Post) { return p.id })))
+    const storyIds = allPosts.filter(function (p: Post) { return p.postSource === 'story' }).map(function (p: Post) { return p.id })
 
-    const repostsResult = await supabase.from('reposts').select('post_type, post_id, lawyer_id, firm_id')
-    setReposts(repostsResult.data || [])
+    if (postIds.length > 0) {
+      const likesResult = await supabase.from('post_likes').select('post_type, post_id, lawyer_id, firm_id').in('post_id', postIds)
+      setLikes(likesResult.data || [])
+      const repostsResult = await supabase.from('reposts').select('post_type, post_id, lawyer_id, firm_id').in('post_id', postIds)
+      setReposts(repostsResult.data || [])
+    } else {
+      setLikes([])
+      setReposts([])
+    }
 
-    const commentsResult = await supabase.from('story_comments').select('*').order('created_at', { ascending: true })
-    setComments(commentsResult.data || [])
+    if (storyIds.length > 0) {
+      const commentsResult = await supabase.from('story_comments').select('*').in('story_id', storyIds).order('created_at', { ascending: true })
+      setComments(commentsResult.data || [])
+    } else {
+      setComments([])
+    }
+
+    // the three most active members, counted by the database over all posts
+    const topResult = await supabase.rpc('community_top_contributors')
+    setTopContributorKeys((topResult.data as string[]) || [])
+  }
+
+  async function loadMoreFeed() {
+    setLoadingMoreFeed(true)
+    feedLimitRef.current = feedLimitRef.current + FEED_PAGE
+    await loadFeed()
+    setLoadingMoreFeed(false)
   }
 
   useEffect(function () {
@@ -152,8 +186,7 @@ export default function CommunityPage() {
         return
       }
 
-      const lawyerResult = await supabase
-        .from('lawyers')
+      const lawyerResult = await myLawyer(supabase)
         .select('id, full_name, is_active, is_comped')
         .eq('user_id', userResult.data.user.id)
         .maybeSingle()
@@ -180,8 +213,7 @@ export default function CommunityPage() {
         return
       }
 
-      const firmResult = await supabase
-        .from('firms')
+      const firmResult = await myFirm(supabase)
         .select('id, firm_name, is_active, is_comped')
         .eq('user_id', userResult.data.user.id)
         .maybeSingle()
@@ -471,18 +503,6 @@ export default function CommunityPage() {
   function getTotalCommentCount(postId: number) {
     return comments.filter(function (c) { return c.story_id === postId }).length
   }
-
-  function getTopContributorIds() {
-    const scoreMap: { [key: string]: number } = {}
-    posts.forEach(function (p) {
-      const key = p.firm_id ? 'firm-' + p.firm_id : 'lawyer-' + p.lawyer_id
-      scoreMap[key] = (scoreMap[key] || 0) + 1
-    })
-    const entries = Object.entries(scoreMap).sort(function (a, b) { return b[1] - a[1] })
-    return entries.slice(0, 3).map(function (e) { return e[0] })
-  }
-
-  const topContributorKeys = getTopContributorIds()
 
   function isTopContributor(post: { lawyer_id: number | null; firm_id: number | null }) {
     const key = post.firm_id ? 'firm-' + post.firm_id : 'lawyer-' + post.lawyer_id
@@ -958,6 +978,14 @@ export default function CommunityPage() {
         )}
 
         {filteredPosts.map(renderPost)}
+
+        {hasMoreFeed && (
+          <div className="text-center mt-6">
+            <button onClick={loadMoreFeed} disabled={loadingMoreFeed} className="px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition disabled:opacity-60">
+              {loadingMoreFeed ? 'جاري التحميل...' : 'عرض منشورات أقدم'}
+            </button>
+          </div>
+        )}
       </div>
 
       {renderModal()}

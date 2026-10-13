@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
@@ -39,6 +40,10 @@ export default function LegalArticlesPage() {
   const [pendingConsultations, setPendingConsultations] = useState(0)
 
   const [articles, setArticles] = useState<Article[]>([])
+  // newest articles first, 30 at a time
+  const articlesLimitRef = useRef(30)
+  const [articlesTotal, setArticlesTotal] = useState(0)
+  const [loadingMoreArticles, setLoadingMoreArticles] = useState(false)
   const [lawyerNames, setLawyerNames] = useState<LawyerName[]>([])
   const [firmNames, setFirmNames] = useState<FirmName[]>([])
   const [search, setSearch] = useState('')
@@ -73,9 +78,10 @@ export default function LegalArticlesPage() {
   }
 
   async function loadArticles() {
-    const result = await supabase.from('legal_articles').select('*').order('created_at', { ascending: false })
+    const result = await supabase.from('legal_articles').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range(0, articlesLimitRef.current - 1)
     const data: Article[] = result.data || []
     setArticles(data)
+    setArticlesTotal(result.count || data.length)
 
     const lawyerIds = Array.from(new Set(data.map(function (a) { return a.lawyer_id }).filter(function (id): id is number { return id !== null })))
     if (lawyerIds.length > 0) {
@@ -103,7 +109,7 @@ export default function LegalArticlesPage() {
           setAccountType('customer')
           setInfoLink('/my-info')
         } else {
-          const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+          const lawyerResult = await myLawyer(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setAccountType('lawyer')
             setInfoLink('/lawyer-info')
@@ -113,7 +119,7 @@ export default function LegalArticlesPage() {
 
             setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
           } else {
-            const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+            const firmResult = await myFirm(supabase).select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) {
               setAccountType('firm')
               setInfoLink('/firm-info')
@@ -307,13 +313,30 @@ export default function LegalArticlesPage() {
           className="w-full px-4 py-2.5 mb-6 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
         />
 
-        <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">{filteredArticles.length} من {articles.length} مقال</p>
+        <p className="font-['Tajawal'] text-xs text-[#4A473F] mb-4">{filteredArticles.length} من {articlesTotal} مقال</p>
 
         {filteredArticles.length === 0 && (
           <p className="font-['Tajawal'] text-center text-[#4A473F]">لا توجد مقالات مطابقة</p>
         )}
 
         {filteredArticles.map(renderArticle)}
+
+        {articles.length < articlesTotal && (
+          <div className="text-center mt-6">
+            <button
+              onClick={async function () {
+                setLoadingMoreArticles(true)
+                articlesLimitRef.current = articlesLimitRef.current + 30
+                await loadArticles()
+                setLoadingMoreArticles(false)
+              }}
+              disabled={loadingMoreArticles}
+              className="px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition disabled:opacity-60"
+            >
+              {loadingMoreArticles ? 'جاري التحميل...' : 'عرض مقالات أقدم'}
+            </button>
+          </div>
+        )}
       </div>
 
       <Footer variant={accountType === 'firm' ? 'firm' : accountType === 'lawyer' ? 'lawyer' : 'customer'} />

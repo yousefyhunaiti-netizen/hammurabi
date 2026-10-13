@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { lawyerStage, firmStage, stagePath, AccountStage } from '../lib/accountStage'
 import OnboardingSteps from '../components/OnboardingSteps'
 import HeaderLines from '../components/HeaderLines'
@@ -28,11 +29,11 @@ export default function AccountReviewPage() {
       let stage: AccountStage = 'ready'
       let type: 'lawyer' | 'firm' = 'lawyer'
 
-      const lawyerResult = await supabase.from('lawyers').select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('needs_onboarding, bar_certificate_number, specialty_id, city, is_approved, is_active, is_comped, country, license_file_url').eq('user_id', userId).maybeSingle()
       if (lawyerResult.data) {
         stage = lawyerStage(lawyerResult.data)
       } else {
-        const firmResult = await supabase.from('firms').select('needs_onboarding, city, address, phone, is_approved, is_active, is_comped').eq('user_id', userId).maybeSingle()
+        const firmResult = await myFirm(supabase).select('needs_onboarding, city, address, phone, is_approved, is_active, is_comped').eq('user_id', userId).maybeSingle()
         if (!firmResult.data) {
           router.replace('/')
           return

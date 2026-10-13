@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import { uploadOwnFile, openPrivateFile } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from './Footer'
@@ -175,7 +177,7 @@ export default function TransactionsTool(props: { tool: ToolKind }) {
   const [items, setItems] = useState<Transaction[]>([])
   const [cases, setCases] = useState<CaseOption[]>([])
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('open')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('')
 
   // form: add (editingId = null) or edit an existing one
@@ -208,12 +210,12 @@ export default function TransactionsTool(props: { tool: ToolKind }) {
       setItems([])
       return
     }
-    const result = await supabase
+    const result = await fetchAll(function (from, to) { return supabase
       .from('business_transactions')
       .select('*')
       .eq('tool', tool)
       .in('lawyer_id', lawyerIds)
-      .order('id', { ascending: false })
+      .order('id', { ascending: false }).range(from, to) })
     setItems(result.data || [])
   }
 
@@ -227,7 +229,7 @@ export default function TransactionsTool(props: { tool: ToolKind }) {
       }
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
       if (lawyerResult.data) {
         if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
           setNotSubscribed(true)
@@ -242,7 +244,7 @@ export default function TransactionsTool(props: { tool: ToolKind }) {
         setTotalUnread(countConversations(unreadResult.data || []))
         setPendingConsultations(await getLawyerBadgeCount(supabase, id))
 
-        const casesResult = await supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', id).order('id', { ascending: false })
+        const casesResult = await fetchAll(function (from, to) { return supabase.from('legal_cases').select('id, case_number, client_name').eq('lawyer_id', id).order('id', { ascending: false }).range(from, to) })
         setCases(casesResult.data || [])
 
         await loadItems([id])
@@ -250,7 +252,7 @@ export default function TransactionsTool(props: { tool: ToolKind }) {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+      const firmResult = await myFirm(supabase).select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
       if (!firmResult.data) {
         setNotAllowed(true)
         setLoading(false)
@@ -272,7 +274,7 @@ export default function TransactionsTool(props: { tool: ToolKind }) {
       setRoster(rosterRows)
       const ids = rosterRows.map(function (l) { return l.id })
       if (ids.length > 0) {
-        const firmCases = await supabase.from('legal_cases').select('id, case_number, client_name').in('lawyer_id', ids)
+        const firmCases = await fetchAll(function (from, to) { return supabase.from('legal_cases').select('id, case_number, client_name').in('lawyer_id', ids).order('id').range(from, to) })
         setCases(firmCases.data || [])
       }
       await loadItems(ids)
@@ -736,9 +738,9 @@ export default function TransactionsTool(props: { tool: ToolKind }) {
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <input type="search" value={search} onChange={function (e) { setSearch(e.target.value) }} placeholder="بحث باسم الموكل أو رقم المرجع" className="flex-1 min-w-[200px] px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
           <select value={statusFilter} onChange={function (e) { setStatusFilter(e.target.value) }} className="px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+            <option value="all">الكل</option>
             <option value="open">الجارية</option>
             <option value="done">المنجزة والمرفوضة</option>
-            <option value="all">الكل</option>
           </select>
           {categoriesInUse.length > 1 && (
             <select value={categoryFilter} onChange={function (e) { setCategoryFilter(e.target.value) }} className="px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">

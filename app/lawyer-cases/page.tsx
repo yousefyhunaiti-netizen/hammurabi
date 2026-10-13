@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll, fetchByIds } from '../lib/fetchAll'
 import { uploadOwnFile, openPrivateFile } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
@@ -46,6 +48,7 @@ type CaseHearing = {
   next_procedure: string | null
   procedure_due_date: string | null
   procedure_due_time: string | null
+  witnesses: string | null
   notes: string | null
 }
 
@@ -154,7 +157,7 @@ export default function LawyerCasesPage() {
   const [cases, setCases] = useState<LegalCase[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
   const [hearingsAll, setHearingsAll] = useState<CaseHearing[]>([])
-  const [statusFilter, setStatusFilter] = useState('active')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   const [selectedCase, setSelectedCase] = useState<LegalCase | null>(null)
   const [caseFolders, setCaseFolders] = useState<CaseFolder[]>([])
@@ -193,7 +196,8 @@ export default function LawyerCasesPage() {
   const [editNextProcedure, setEditNextProcedure] = useState('')
   const [editProcedureDate, setEditProcedureDate] = useState('')
   const [editProcedureTime, setEditProcedureTime] = useState('')
-  const [editReminderDays, setEditReminderDays] = useState(3)
+  const [editReminderDays, setEditReminderDays] = useState(1)
+  const [editWitnesses, setEditWitnesses] = useState('')
   const [hearingError, setHearingError] = useState('')
 
   const [newFolderName, setNewFolderName] = useState('')
@@ -227,7 +231,7 @@ export default function LawyerCasesPage() {
   }
 
   async function loadCases(id: number) {
-    const casesResult = await supabase.from('legal_cases').select('*').eq('lawyer_id', id).order('id', { ascending: false })
+    const casesResult = await fetchAll(function (from, to) { return supabase.from('legal_cases').select('*').eq('lawyer_id', id).order('id', { ascending: false }).range(from, to) })
     setCases(casesResult.data || [])
     await loadHearings(casesResult.data || [])
   }
@@ -239,7 +243,7 @@ export default function LawyerCasesPage() {
       setHearingsAll([])
       return
     }
-    const casesResult = await supabase.from('legal_cases').select('*').in('lawyer_id', rosterIds).order('id', { ascending: false })
+    const casesResult = await fetchAll(function (from, to) { return supabase.from('legal_cases').select('*').in('lawyer_id', rosterIds).order('id', { ascending: false }).range(from, to) })
     setCases(casesResult.data || [])
     await loadHearings(casesResult.data || [])
   }
@@ -247,7 +251,7 @@ export default function LawyerCasesPage() {
   async function loadHearings(caseRows: LegalCase[]) {
     const caseIds = caseRows.map(function (c) { return c.id })
     if (caseIds.length > 0) {
-      const hearingsResult = await supabase.from('case_hearings').select('*').in('case_id', caseIds)
+      const hearingsResult = await fetchByIds(caseIds, function (chunk, from, to) { return supabase.from('case_hearings').select('*').in('case_id', chunk).order('id').range(from, to) })
       setHearingsAll(hearingsResult.data || [])
     } else {
       setHearingsAll([])
@@ -265,7 +269,7 @@ export default function LawyerCasesPage() {
       }
 
       const userId = userResult.data.user.id
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
       if (lawyerResult.data) setCountry(lawyerResult.data.country || 'JO')
 
       if (lawyerResult.data) {
@@ -290,7 +294,7 @@ export default function LawyerCasesPage() {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
+      const firmResult = await myFirm(supabase).select('id, is_active, is_comped, country').eq('user_id', userId).maybeSingle()
       if (firmResult.data) setCountry(firmResult.data.country || 'JO')
 
       if (!firmResult.data) {
@@ -389,7 +393,6 @@ export default function LawyerCasesPage() {
       court_location: formCourt.location || null,
       court_name: courtText(formCourt.type, formCourt.location) || null,
       judge_name: formJudgeName,
-      witnesses: formWitnesses,
       status: 'منظورة',
       notes: formNotes,
     })
@@ -434,7 +437,6 @@ export default function LawyerCasesPage() {
       court_location: formCourt.location || null,
       court_name: courtText(formCourt.type, formCourt.location) || null,
       judge_name: formJudgeName,
-      witnesses: formWitnesses,
       notes: formNotes,
     }).eq('id', selectedCase.id)
 
@@ -476,14 +478,14 @@ export default function LawyerCasesPage() {
     const filesResult = await supabase.from('case_files').select('*').eq('case_id', c.id)
     setCaseFiles(filesResult.data || [])
 
-    const invoicesResult = await supabase.from('invoices').select('*').eq('case_id', c.id)
+    const invoicesResult = await fetchAll(function (from, to) { return supabase.from('invoices').select('*').eq('case_id', c.id).order('id').range(from, to) })
     setCaseInvoices(invoicesResult.data || [])
 
-    const wakalahResult = await supabase.from('wakalah_documents').select(WAKALAH_COLUMNS).eq('case_id', c.id)
+    const wakalahResult = await fetchAll(function (from, to) { return supabase.from('wakalah_documents').select(WAKALAH_COLUMNS).eq('case_id', c.id).order('id').range(from, to) })
     setCaseWakalah(wakalahResult.data || [])
 
     if (lawyerId) {
-      const unlinkedResult = await supabase.from('wakalah_documents').select(WAKALAH_COLUMNS).eq('lawyer_id', lawyerId).is('case_id', null).neq('status', 'revoked')
+      const unlinkedResult = await fetchAll(function (from, to) { return supabase.from('wakalah_documents').select(WAKALAH_COLUMNS).eq('lawyer_id', lawyerId).is('case_id', null).neq('status', 'revoked').order('id').range(from, to) })
       setUnlinkedWakalah(unlinkedResult.data || [])
     }
   }
@@ -542,7 +544,8 @@ export default function LawyerCasesPage() {
     setEditNextProcedure(h.next_procedure || '')
     setEditProcedureDate(h.procedure_due_date || '')
     setEditProcedureTime(h.procedure_due_time || '')
-    setEditReminderDays(3)
+    setEditReminderDays(1)
+    setEditWitnesses(h.witnesses || '')
     setHearingError('')
   }
 
@@ -556,6 +559,7 @@ export default function LawyerCasesPage() {
     const updateResult = await supabase.from('case_hearings').update({
       outcome: editOutcome,
       next_procedure: editNextProcedure,
+      witnesses: editWitnesses.trim() || null,
       procedure_due_date: editProcedureDate || null,
       procedure_due_time: editProcedureTime || null,
     }).eq('id', h.id)
@@ -787,7 +791,7 @@ export default function LawyerCasesPage() {
     }
 
     return (
-      <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {CASE_STATUSES.map(function (col) {
           const colCases = visibleCases.filter(function (c) { return getKanbanColumn(c) === col })
 
@@ -796,7 +800,7 @@ export default function LawyerCasesPage() {
           }
 
           return (
-            <div key={col} onDragOver={dragOver} onDrop={dropHandler} className="bg-[#F3EEE4] rounded-lg p-3 min-h-[160px] min-w-[230px] flex-1 shrink-0">
+            <div key={col} onDragOver={dragOver} onDrop={dropHandler} className="bg-[#F3EEE4] rounded-lg p-3 min-h-[160px] min-w-0">
               <h3 className="font-['Tajawal'] font-bold text-sm text-[#1B1A17] mb-3 text-center">{col} ({colCases.length})</h3>
               {colCases.length === 0 && (
                 <p className="font-['Tajawal'] text-xs text-[#4A473F] text-center">لا توجد قضايا</p>
@@ -829,8 +833,9 @@ export default function LawyerCasesPage() {
           )}
         </div>
 
-        {!isEditing && (h.outcome || h.next_procedure || h.procedure_due_date) && (
+        {!isEditing && (h.outcome || h.next_procedure || h.procedure_due_date || h.witnesses) && (
           <div className="space-y-1">
+            {h.witnesses && <p className="font-['Tajawal'] text-xs text-[#4A473F]"><span className="font-bold text-[#1B1A17]">الشهود:</span> {h.witnesses}</p>}
             {h.outcome && <p className="font-['Tajawal'] text-xs text-[#4A473F]"><span className="font-bold text-[#1B1A17]">ما تم في الجلسة:</span> {h.outcome}</p>}
             {h.next_procedure && <p className="font-['Tajawal'] text-xs text-[#4A473F]"><span className="font-bold text-[#1B1A17]">المطلوب للجلسة القادمة:</span> {h.next_procedure}</p>}
             {h.procedure_due_date && <p className="font-['Tajawal'] text-xs text-[#7A2E2E] font-bold">الجلسة القادمة: {formatDateDisplay(h.procedure_due_date)} {h.procedure_due_time || ''}</p>}
@@ -844,8 +849,12 @@ export default function LawyerCasesPage() {
               <textarea value={editOutcome} onChange={function (e) { setEditOutcome(e.target.value) }} rows={2} className={smallFieldClass} />
             </div>
             <div>
-              <label className={labelClass}>المطلوب للجلسة القادمة (شهود، مستندات، مذكرة...)</label>
+              <label className={labelClass}>المطلوب للجلسة القادمة (مستندات، مذكرة...)</label>
               <textarea value={editNextProcedure} onChange={function (e) { setEditNextProcedure(e.target.value) }} rows={2} className={smallFieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>الشهود (إن وُجدوا)</label>
+              <textarea value={editWitnesses} onChange={function (e) { setEditWitnesses(e.target.value) }} rows={1} className={smallFieldClass} />
             </div>
             <div>
               <label className={labelClass}>موعد الجلسة القادمة</label>
@@ -857,10 +866,10 @@ export default function LawyerCasesPage() {
             <div>
               <label className={labelClass}>تذكير للتحضير قبل الجلسة بـ</label>
               <div className="flex gap-2">
-                {[3, 4].map(function (d) {
+                {[1, 3].map(function (d) {
                   return (
                     <button key={d} type="button" onClick={function () { setEditReminderDays(d) }} className={"flex-1 py-2 rounded-md font-['Tajawal'] text-xs " + (editReminderDays === d ? 'bg-[#1B1A17] text-white' : 'bg-white text-[#4A473F] border border-[#D8D2C4]')}>
-                      {d} أيام
+                      {d === 1 ? 'يوم واحد' : d + ' أيام'}
                     </button>
                   )
                 })}
@@ -958,7 +967,6 @@ export default function LawyerCasesPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {field('اسم القاضي', <input type="text" value={formJudgeName} onChange={function (e) { setFormJudgeName(e.target.value) }} className={fieldClass} />)}
-          {field('الشهود', <textarea value={formWitnesses} onChange={function (e) { setFormWitnesses(e.target.value) }} rows={1} className={fieldClass} />)}
         </div>
 
         {field('ملاحظات', <textarea value={formNotes} onChange={function (e) { setFormNotes(e.target.value) }} rows={2} className={fieldClass} />)}
@@ -1051,7 +1059,7 @@ export default function LawyerCasesPage() {
               <div><p className="text-[#4A473F]">المحكمة</p><p className="text-[#1B1A17] font-medium">{c.court_instance || c.court_name || '-'}</p></div>
               <div><p className="text-[#4A473F]">الموقع</p><p className="text-[#1B1A17] font-medium">{c.court_location || '-'}</p></div>
               <div><p className="text-[#4A473F]">القاضي</p><p className="text-[#1B1A17] font-medium">{c.judge_name || '-'}</p></div>
-              <div className="col-span-2"><p className="text-[#4A473F]">الشهود</p><p className="text-[#1B1A17] font-medium">{c.witnesses || '-'}</p></div>
+              {c.witnesses && <div className="col-span-2"><p className="text-[#4A473F]">الشهود (سابقاً)</p><p className="text-[#1B1A17] font-medium">{c.witnesses}</p></div>}
               {c.notes && <div className="col-span-2"><p className="text-[#4A473F]">ملاحظات</p><p className="text-[#1B1A17] font-medium">{c.notes}</p></div>}
             </div>
           )}
@@ -1068,13 +1076,16 @@ export default function LawyerCasesPage() {
           {caseInvoices.map(renderInvoiceRow)}
 
           {!isFirm && (
-          <div className="flex flex-wrap gap-2 mt-3 items-start">
-            <input type="number" value={newInvoiceAmount} onChange={invoiceAmountChange} placeholder="مبلغ فاتورة جديدة" className="flex-1 px-3 py-2 bg-[#F3EEE4] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]" />
-            <div className="w-full sm:w-56">
-              <p className="font-['Tajawal'] text-[11px] text-[#4A473F] mb-1">تاريخ الاستحقاق</p>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_15rem_auto] gap-3 mt-3 items-end">
+            <div>
+              <label className={labelClass}>مبلغ فاتورة جديدة ({cur})</label>
+              <input type="number" value={newInvoiceAmount} onChange={invoiceAmountChange} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>تاريخ الاستحقاق</label>
               <DateFields value={newInvoiceDueDate} onChange={setNewInvoiceDueDate} tone="paper" />
             </div>
-            <button onClick={handleAddInvoice} disabled={savingInvoice} className="px-4 py-2 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm">إضافة فاتورة</button>
+            <button onClick={handleAddInvoice} disabled={savingInvoice} className="h-[42px] px-4 bg-[#1B1A17] text-white rounded-md font-['Tajawal'] text-sm disabled:opacity-60">إضافة فاتورة</button>
           </div>
           )}
         </div>
@@ -1324,9 +1335,9 @@ export default function LawyerCasesPage() {
               </div>
 
               <select value={statusFilter} onChange={function (e) { setStatusFilter(e.target.value) }} className="px-4 py-2 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]">
+                <option value="all">كل القضايا</option>
                 <option value="active">المنظورة والجارية فقط</option>
                 <option value="closed">المنتهية (مفصولة، منفذة، مسقطة، متروكة)</option>
-                <option value="all">عرض الكل</option>
               </select>
 
               {!isFirm && (

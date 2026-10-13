@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { authHeaders } from '../lib/files'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import ReactMarkdown from 'react-markdown'
@@ -30,6 +31,7 @@ export default function AiAssistantPage() {
   const [totalUnread, setTotalUnread] = useState(0)
   const [pendingConsultations, setPendingConsultations] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const supabase = createClient()
   const router = useRouter()
@@ -46,7 +48,7 @@ export default function AiAssistantPage() {
         if (customerResult.data) {
           setInfoLink('/my-info')
         } else {
-          const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+          const lawyerResult = await myLawyer(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setInfoLink('/lawyer-info')
             setIsLawyerAccount(true)
@@ -59,7 +61,7 @@ export default function AiAssistantPage() {
 
             setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
           } else {
-            const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+            const firmResult = await myFirm(supabase).select('id').eq('user_id', user.id).maybeSingle()
             if (firmResult.data) {
               setInfoLink('/firm-info')
               setIsFirmAccount(true)
@@ -119,11 +121,12 @@ export default function AiAssistantPage() {
   }
 
   async function handleSend() {
-    if (!input.trim()) return
+    if (!input.trim() || sending) return
 
     const newMessages = messages.concat([{ role: 'user', text: input }])
     setMessages(newMessages.concat([{ role: 'model', text: '' }]))
     setInput('')
+    if (inputRef.current) inputRef.current.style.height = 'auto'
     setSending(true)
     setSlowWait(false)
 
@@ -151,22 +154,30 @@ export default function AiAssistantPage() {
 
     let accumulatedText = ''
 
-    while (true) {
-      const result = await reader.read()
-      if (result.done) break
+    try {
+      while (true) {
+        const result = await reader.read()
+        if (result.done) break
 
-      accumulatedText = accumulatedText + decoder.decode(result.value, { stream: true })
+        accumulatedText = accumulatedText + decoder.decode(result.value, { stream: true })
 
-      setMessages(newMessages.concat([{ role: 'model', text: accumulatedText }]))
+        setMessages(newMessages.concat([{ role: 'model', text: accumulatedText }]))
+      }
+      accumulatedText = accumulatedText + decoder.decode()
+    } catch (e) {
+      accumulatedText = accumulatedText || 'انقطع الاتصال قبل اكتمال الإجابة، حاول مرة أخرى.'
     }
+    setMessages(newMessages.concat([{ role: 'model', text: accumulatedText || 'لم تصل إجابة، حاول مرة أخرى.' }]))
 
     clearTimeout(slowTimer)
     setSlowWait(false)
     setSending(false)
   }
 
+  // Enter sends; Shift+Enter starts a new line
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
       handleSend()
     }
   }
@@ -175,12 +186,19 @@ export default function AiAssistantPage() {
     const isUser = m.role === 'user'
     const hasRecommendation = m.text.indexOf('الاختصاص المقترح:') !== -1
 
+    // the answer's box appears only once its first words arrive (the dots show until then)
+    if (!isUser && !m.text) return null
+
     return (
       <div key={index} className={"mb-3 flex " + (isUser ? 'justify-start' : 'justify-end')}>
-        <div className={"px-4 py-3 rounded-lg max-w-sm font-['Tajawal'] text-sm " + (isUser ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'bg-white border border-[#D8D2C4] text-[#1B1A17]')}>
-          <div className="prose-sm [&_p]:mb-2 [&_ul]:list-disc [&_ul]:mr-4 [&_ol]:list-decimal [&_ol]:mr-4 [&_strong]:font-bold [&_h3]:font-bold [&_h3]:text-base [&_h3]:mb-1">
+        <div dir="auto" className={"px-4 py-3 rounded-lg max-w-[85%] min-w-0 break-words font-['Tajawal'] text-sm leading-relaxed " + (isUser ? 'bg-[#1B1A17] text-[#F3EEE4] whitespace-pre-wrap' : 'bg-white border border-[#D8D2C4] text-[#1B1A17]')}>
+          {isUser ? (
+            <p dir="auto">{m.text}</p>
+          ) : (
+          <div dir="auto" className="prose-sm [overflow-wrap:anywhere] [&_p]:mb-2 [&_ul]:list-disc [&_ul]:ms-4 [&_ol]:list-decimal [&_ol]:ms-4 [&_strong]:font-bold [&_h3]:font-bold [&_h3]:text-base [&_h3]:mb-1">
             <ReactMarkdown>{m.text}</ReactMarkdown>
           </div>
+          )}
           {hasRecommendation && !isUser && !isLawyerAccount && !isFirmAccount && (
             <a href="/lawyers" className="inline-block mt-2 px-3 py-2 bg-[#AD8A4E] text-white rounded-md text-xs">
               تصفح دليل المحامين
@@ -291,7 +309,7 @@ export default function AiAssistantPage() {
         <div className="bg-[#F3EEE4] border border-[#D8D2C4] rounded-md p-3 mb-2">
           <p className="font-['Tajawal'] text-xs text-[#4A473F]">
             ⚠️ هذا مساعد يعمل بالذكاء الاصطناعي وليس بديلاً عن استشارة محامي مرخص، وقد يخطئ أحياناً.{' '}
-            <a href="/terms" target="_blank" className="text-[#AD8A4E] underline">اقرأ المزيد</a>
+            <a href="/terms?tab=ai" target="_blank" className="text-[#AD8A4E] underline">اقرأ المزيد</a>
           </p>
         </div>
       </div>
@@ -315,14 +333,21 @@ export default function AiAssistantPage() {
           )}
         </div>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={inputRef}
             value={input}
-            onChange={function (e) { setInput(e.target.value) }}
+            onChange={function (e) {
+              setInput(e.target.value)
+              // the box grows with the text (up to about 6 lines), then scrolls
+              e.target.style.height = 'auto'
+              e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'
+            }}
             onKeyDown={handleKeyDown}
-            placeholder="اكتب رسالتك هنا..."
-            className="flex-1 px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17]"
+            placeholder="اكتب رسالتك هنا... (Shift+Enter لسطر جديد)"
+            dir="auto"
+            rows={1}
+            className="flex-1 min-w-0 px-4 py-3 bg-white border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm text-[#1B1A17] resize-none leading-relaxed max-h-40 overflow-y-auto"
           />
           <button
             onClick={handleSend}

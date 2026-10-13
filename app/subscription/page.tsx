@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
@@ -44,6 +45,10 @@ export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true)
   const [accountType, setAccountType] = useState('')
   const [account, setAccount] = useState<AccountInfo | null>(null)
+  // the current plan's renewal, and cancelling it
+  const [plan, setPlan] = useState<{ tier: string; status: string; next_billing_date: string | null } | null>(null)
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [notAllowed, setNotAllowed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [totalUnread, setTotalUnread] = useState(0)
@@ -84,7 +89,7 @@ export default function SubscriptionPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_approved, is_comped, is_active, subscription_tier, firm_id, subaccount_until, needs_onboarding, bar_certificate_number, specialty_id, city, country, license_file_url').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_approved, is_comped, is_active, subscription_tier, firm_id, subaccount_until, needs_onboarding, bar_certificate_number, specialty_id, city, country, license_file_url').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         // a new account that hasn't reached this step yet goes back to its step
@@ -102,11 +107,14 @@ export default function SubscriptionPage() {
 
         setPendingConsultations(await getLawyerBadgeCount(supabase, lawyerResult.data.id))
 
+        const planResult = await supabase.rpc('my_subscription')
+        setPlan(planResult.data || null)
+
         setLoading(false)
         return
       }
 
-      const firmResult = await supabase.from('firms').select('id, is_approved, is_comped, is_active, subscription_tier, needs_onboarding, city, address, phone, country').eq('user_id', userId).maybeSingle()
+      const firmResult = await myFirm(supabase).select('id, is_approved, is_comped, is_active, subscription_tier, needs_onboarding, city, address, phone, country').eq('user_id', userId).maybeSingle()
 
       if (firmResult.data) {
         const stage = firmStage(firmResult.data)
@@ -122,6 +130,9 @@ export default function SubscriptionPage() {
         setTotalUnread(countConversations(firmUnreadResult.data || []))
 
         setPendingConsultations(await getFirmBadgeCount(supabase, firmResult.data.id))
+
+        const planResult = await supabase.rpc('my_subscription')
+        setPlan(planResult.data || null)
 
         setLoading(false)
         return
@@ -388,6 +399,39 @@ export default function SubscriptionPage() {
           </div>
         )}
 
+        {plan && (
+          <div className="bg-white border border-[#D8D2C4] rounded-lg p-6 mt-8">
+            <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-2">إدارة الاشتراك</h2>
+            <p className="font-['Tajawal'] text-sm text-[#4A473F] mb-4">
+              {plan.status === 'cancelled'
+                ? 'أُلغي تجديد اشتراكك' + (plan.next_billing_date ? '، ويبقى فعّالاً حتى ' + plan.next_billing_date.split('-').reverse().join('/') : '') + '. يمكنك الاشتراك من جديد في أي وقت.'
+                : 'يتجدد اشتراكك' + (plan.next_billing_date ? ' في ' + plan.next_billing_date.split('-').reverse().join('/') : '') + '. يصلك تذكير بالبريد قبل التجديد بأسبوع.'}
+            </p>
+            {plan.status !== 'cancelled' && !confirmCancel && (
+              <button onClick={function () { setConfirmCancel(true) }} className="px-4 py-2 bg-[#F3EEE4] text-[#7A2E2E] border border-[#D8D2C4] rounded-md font-['Tajawal'] text-sm">إلغاء التجديد</button>
+            )}
+            {plan.status !== 'cancelled' && confirmCancel && (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-['Tajawal'] text-sm text-[#7A2E2E]">متأكد؟ يبقى اشتراكك فعّالاً حتى نهاية المدة ولن يتجدد بعدها.</p>
+                <button
+                  disabled={cancelling}
+                  onClick={async function () {
+                    setCancelling(true)
+                    await supabase.rpc('cancel_my_subscription')
+                    const fresh = await supabase.rpc('my_subscription')
+                    setPlan(fresh.data || null)
+                    setCancelling(false)
+                    setConfirmCancel(false)
+                  }}
+                  className="px-4 py-2 bg-[#7A2E2E] text-white rounded-md font-['Tajawal'] text-sm disabled:opacity-60"
+                >
+                  تأكيد الإلغاء
+                </button>
+                <button onClick={function () { setConfirmCancel(false) }} className="px-4 py-2 bg-[#F3EEE4] text-[#4A473F] rounded-md font-['Tajawal'] text-sm">تراجع</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <Footer variant={accountType === 'firm' ? 'firm' : 'lawyer'} />

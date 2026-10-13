@@ -38,10 +38,13 @@ export default function DeleteAccount() {
     // 1. the account's own files
     for (let i = 0; i < fileBuckets.length; i++) {
       const bucket = fileBuckets[i]
-      const listResult = await supabase.storage.from(bucket).list(user.id, { limit: 1000 })
-      const paths = (listResult.data || []).map(function (f) { return user.id + '/' + f.name })
-      if (paths.length > 0) {
-        await supabase.storage.from(bucket).remove(paths)
+      // a lawyer can have thousands of files: remove them 1000 at a time until none are left
+      for (let round = 0; round < 100; round++) {
+        const listResult = await supabase.storage.from(bucket).list(user.id, { limit: 1000 })
+        const paths = (listResult.data || []).map(function (f: { name: string }) { return user.id + '/' + f.name })
+        if (paths.length === 0) break
+        const removeResult = await supabase.storage.from(bucket).remove(paths)
+        if (removeResult.error) break
       }
     }
 

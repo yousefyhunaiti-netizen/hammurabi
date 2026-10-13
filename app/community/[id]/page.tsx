@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '../../lib/supabase'
+import { myLawyer } from '../../lib/me'
 import HeaderLines from '../../components/HeaderLines'
 import Loader from '../../components/Loader'
 
@@ -73,7 +74,7 @@ export default function QuestionDetailPage() {
       const userResult = await supabase.auth.getUser()
 
       if (userResult.data.user) {
-        const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', userResult.data.user.id).maybeSingle()
+        const lawyerResult = await myLawyer(supabase).select('id').eq('user_id', userResult.data.user.id).maybeSingle()
         if (lawyerResult.data) {
           setIsLawyer(true)
           setLawyerId(lawyerResult.data.id)

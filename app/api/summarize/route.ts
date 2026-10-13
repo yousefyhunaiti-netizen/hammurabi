@@ -14,7 +14,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ summary: null, error: 'لقد وصلت إلى الحد اليومي لاستخدام الذكاء الاصطناعي. يمكنك المتابعة غداً.' }, { status: 429 })
   }
 
-  const body = await request.json()
+  let body: { text?: unknown } = {}
+  try {
+    body = await request.json()
+  } catch (e) {
+    return NextResponse.json({ summary: null, error: 'لا يوجد نص للتلخيص' }, { status: 400 })
+  }
   const text = String(body.text || '').slice(0, 20000)
   if (!text.trim()) {
     return NextResponse.json({ summary: null, error: 'لا يوجد نص للتلخيص' }, { status: 400 })

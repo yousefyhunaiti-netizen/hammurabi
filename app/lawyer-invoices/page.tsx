@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import WorkspaceSwitch from '../components/WorkspaceSwitch'
@@ -21,6 +23,8 @@ type Invoice = {
   due_date: string | null
   created_at: string
   paid_at: string | null
+  // 'consultation' = added automatically when a customer paid for a consultation
+  source: string | null
 }
 
 type Expense = {
@@ -67,6 +71,7 @@ export default function LawyerInvoicesPage() {
   const [allExpenses, setExpenses] = useState<Expense[]>([])
   const [roster, setRoster] = useState<RosterLawyer[]>([])
   const [filter, setFilter] = useState('all')
+  const [invoiceKind, setInvoiceKind] = useState('all')
   const [savingsGoalPercent, setSavingsGoalPercent] = useState('')
   const [savingGoal, setSavingGoal] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -176,24 +181,24 @@ export default function LawyerInvoicesPage() {
         setExpenses([])
         return
       }
-      const firmInvoicesResult = await supabase.from('invoices').select('*').in('lawyer_id', rosterIds).order('created_at', { ascending: false })
+      const firmInvoicesResult = await fetchAll(function (from, to) { return supabase.from('invoices').select('*').in('lawyer_id', rosterIds).order('created_at', { ascending: false }).order('id').range(from, to) })
       setInvoices(firmInvoicesResult.data || [])
 
-      const firmExpensesResult = await supabase.from('expenses').select('*').in('lawyer_id', rosterIds).order('expense_date', { ascending: false })
+      const firmExpensesResult = await fetchAll(function (from, to) { return supabase.from('expenses').select('*').in('lawyer_id', rosterIds).order('expense_date', { ascending: false }).order('id').range(from, to) })
       const firmExpenseRows: Expense[] = firmExpensesResult.data || []
       setExpenses(firmExpenseRows.filter(function (e) { return !e.is_skipped }))
       return
     }
 
-    const invoicesResult = await supabase.from('invoices').select('*').eq('lawyer_id', id).order('created_at', { ascending: false })
+    const invoicesResult = await fetchAll(function (from, to) { return supabase.from('invoices').select('*').eq('lawyer_id', id).order('created_at', { ascending: false }).order('id').range(from, to) })
     setInvoices(invoicesResult.data || [])
 
-    const expensesResult = await supabase.from('expenses').select('*').eq('lawyer_id', id).order('expense_date', { ascending: false })
+    const expensesResult = await fetchAll(function (from, to) { return supabase.from('expenses').select('*').eq('lawyer_id', id).order('expense_date', { ascending: false }).order('id').range(from, to) })
     let expenseRows: Expense[] = expensesResult.data || []
 
     const addedAny = await generateRecurringExpenses(id, expenseRows)
     if (addedAny) {
-      const refreshedResult = await supabase.from('expenses').select('*').eq('lawyer_id', id).order('expense_date', { ascending: false })
+      const refreshedResult = await fetchAll(function (from, to) { return supabase.from('expenses').select('*').eq('lawyer_id', id).order('expense_date', { ascending: false }).order('id').range(from, to) })
       expenseRows = refreshedResult.data || []
     }
 
@@ -212,7 +217,7 @@ export default function LawyerInvoicesPage() {
 
       const userId = userResult.data.user.id
 
-      const lawyerResult = await supabase.from('lawyers').select('id, full_name, is_active, is_comped, savings_goal_percent, country').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, full_name, is_active, is_comped, savings_goal_percent, country').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         setCur(currencyLabel(currencyOf(lawyerResult.data.country)))
@@ -238,7 +243,7 @@ export default function LawyerInvoicesPage() {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('*').eq('user_id', userId).maybeSingle()
+      const firmResult = await myFirm(supabase).select('*').eq('user_id', userId).maybeSingle()
 
       if (firmResult.data) {
         setCur(currencyLabel(currencyOf(firmResult.data.country)))
@@ -673,7 +678,10 @@ export default function LawyerInvoicesPage() {
     return (
       <div key={invoice.id} className={"border rounded-lg p-4 mb-3 " + (isOverdue ? 'bg-[#F8EAEA] border-[#7A2E2E]' : 'bg-white border-[#D8D2C4]')}>
         <div className="flex justify-between items-start mb-2">
-          <p className="font-['Tajawal'] font-bold text-[#1B1A17]">{invoice.client_name}</p>
+          <p className="font-['Tajawal'] font-bold text-[#1B1A17]">
+            {invoice.client_name}
+            {invoice.source === 'consultation' && <span className="mr-2 px-2 py-0.5 bg-[#F3EEE4] text-[#AD8A4E] rounded-full text-[11px] font-normal">استشارة مدفوعة</span>}
+          </p>
           <span className={"px-3 py-1 rounded-full text-xs font-['Tajawal'] " + (invoice.status === 'paid' ? 'bg-[#2F4538] text-white' : 'bg-[#7A2E2E] text-white')}>
             {invoice.status === 'paid' ? 'مدفوعة' : isOverdue ? 'متأخرة' : 'غير مدفوعة'}
           </span>
@@ -1168,9 +1176,30 @@ export default function LawyerInvoicesPage() {
           </div>
         )}
 
-        <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17] mb-3">جميع الفواتير</h2>
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
+          <h2 className="font-['Tajawal'] font-bold text-lg text-[#1B1A17]">جميع الفواتير</h2>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { value: 'all', label: 'الكل' },
+              { value: 'consultation', label: 'استشارات مدفوعة' },
+              { value: 'paid', label: 'مدفوعة' },
+              { value: 'unpaid', label: 'غير مدفوعة' },
+            ].map(function (o) {
+              return (
+                <button key={o.value} type="button" onClick={function () { setInvoiceKind(o.value) }} className={"px-3 py-1.5 rounded-full font-['Tajawal'] text-xs transition " + (invoiceKind === o.value ? 'bg-[#1B1A17] text-white' : 'bg-white border border-[#D8D2C4] text-[#4A473F] hover:border-[#AD8A4E]')}>
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
         {invoices.length === 0 && <p className="font-['Tajawal'] text-center text-[#4A473F]">لا توجد فواتير بعد</p>}
-        {invoices.map(renderInvoice)}
+        {invoices.filter(function (inv) {
+          if (invoiceKind === 'consultation') return inv.source === 'consultation'
+          if (invoiceKind === 'paid') return inv.status === 'paid'
+          if (invoiceKind === 'unpaid') return inv.status !== 'paid'
+          return true
+        }).map(renderInvoice)}
       </div>
 
       <Footer variant={accountType === 'firm' ? 'firm' : 'lawyer'} />

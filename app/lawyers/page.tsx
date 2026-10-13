@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
@@ -23,6 +24,9 @@ type Lawyer = {
   firm_id: number | null
   country: string | null
   languages: string[] | null
+  rating_avg: number | null
+  rating_count: number
+  firm_name: string | null
 }
 
 type Firm = {
@@ -33,17 +37,25 @@ type Firm = {
   founded_year: number | null
   country: string | null
   languages: string[] | null
+  lawyer_count: number
+  rating_avg: number | null
+  rating_count: number
 }
+
+type DirectoryMeta = {
+  lawyers: number
+  firms: number
+  intl_count: number
+  countries: string[]
+  languages: string[]
+}
+
+const PAGE_SIZE = 24
+const EMPTY_META: DirectoryMeta = { lawyers: 0, firms: 0, intl_count: 0, countries: [], languages: [] }
 
 type Specialty = {
   id: number
   name_ar: string
-}
-
-type Review = {
-  lawyer_id: number | null
-  firm_id: number | null
-  rating: number
 }
 
 const cityOptions = ['عمان', 'إربد', 'الزرقاء', 'البلقاء', 'المفرق', 'الكرك', 'جرش', 'عجلون', 'مادبا', 'العقبة', 'معان', 'الطفيلة']
@@ -63,24 +75,22 @@ function isOnVacation(l: Lawyer) {
   return !!l.vacation_until && l.vacation_until >= todayString()
 }
 
-function shuffle<T>(items: T[]) {
-  const copy = items.slice()
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    const temp = copy[i]
-    copy[i] = copy[j]
-    copy[j] = temp
-  }
-  return copy
-}
-
 export default function LawyersPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [lawyers, setLawyers] = useState<Lawyer[]>([])
   const [firms, setFirms] = useState<Firm[]>([])
   const [specialties, setSpecialties] = useState<Specialty[]>([])
-  const [reviews, setReviews] = useState<Review[]>([])
+  // The database filters, orders and pages the results; the page shows one page at a time.
+  const [lawyersTotal, setLawyersTotal] = useState(0)
+  const [firmsTotal, setFirmsTotal] = useState(0)
+  const [meta, setMeta] = useState<DirectoryMeta>(EMPTY_META)
+  const [listLoading, setListLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  // a new random order on every visit, kept while paging
+  const [seed] = useState(function () { return Math.random().toString(36).slice(2) })
+  const requestRef = useRef(0)
   const [viewMode, setViewMode] = useState('individuals')
   const [layout, setLayout] = useState('cards')
 
@@ -145,14 +155,14 @@ export default function LawyersPage() {
           setAccountRole('customer')
           setInfoLink('/my-info')
         } else {
-          const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+          const lawyerResult = await myLawyer(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (lawyerResult.data) {
             setAccountRole('lawyer')
             setCheckingAuth(false)
             setLoading(false)
             return
           }
-          const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+          const firmResult = await myFirm(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (firmResult.data) {
             setAccountRole('firm')
             setCheckingAuth(false)
@@ -164,24 +174,88 @@ export default function LawyersPage() {
 
       setCheckingAuth(false)
 
-      // No ranking: lawyers and firms appear in a random order, shuffled once per visit
-      const lawyersResult = await supabase.from('lawyers').select('*').eq('is_approved', true).eq('is_active', true).eq('is_trainee', false)
-      setLawyers(shuffle(lawyersResult.data || []))
-
-      const firmsResult = await supabase.from('firms').select('*').eq('is_approved', true).eq('is_active', true)
-      setFirms(shuffle(firmsResult.data || []))
-
       const specialtiesResult = await supabase.from('specialties').select('*').order('id')
       setSpecialties(specialtiesResult.data || [])
-
-      const reviewsResult = await supabase.from('reviews').select('lawyer_id, firm_id, rating')
-      setReviews(reviewsResult.data || [])
 
       setLoading(false)
     }
 
     loadData()
   }, [])
+
+  // typing in the search box waits a moment before asking the database
+  useEffect(function () {
+    const timer = setTimeout(function () { setDebouncedSearch(search.trim()) }, 350)
+    return function () { clearTimeout(timer) }
+  }, [search])
+
+  // No ranking: lawyers and firms come in a random order (the same order while paging).
+  async function fetchPage(offset: number) {
+    if (viewMode === 'individuals') {
+      return supabase.rpc('directory_lawyers', {
+        p_intl: intl,
+        p_country: selectedCountry || null,
+        p_language: selectedLanguage || null,
+        p_specialty: selectedSpecialty ? Number(selectedSpecialty) : null,
+        p_city: selectedCity || null,
+        p_available: onlyAvailable,
+        p_search: debouncedSearch || null,
+        p_seed: seed,
+        p_offset: offset,
+        p_limit: PAGE_SIZE,
+      })
+    }
+    return supabase.rpc('directory_firms', {
+      p_intl: intl,
+      p_country: selectedCountry || null,
+      p_language: selectedLanguage || null,
+      p_city: selectedCity || null,
+      p_search: debouncedSearch || null,
+      p_seed: seed,
+      p_offset: offset,
+      p_limit: PAGE_SIZE,
+    })
+  }
+
+  function applyPage(result: { data: any }, append: boolean) {
+    const data = (result.data || { total: 0, rows: [] }) as { total: number; rows: any[] }
+    if (viewMode === 'individuals') {
+      setLawyersTotal(data.total || 0)
+      setLawyers(function (prev) { return append ? prev.concat(data.rows || []) : (data.rows || []) })
+    } else {
+      setFirmsTotal(data.total || 0)
+      setFirms(function (prev) { return append ? prev.concat(data.rows || []) : (data.rows || []) })
+    }
+  }
+
+  // first page again whenever a filter, the section or the tab changes
+  useEffect(function () {
+    if (checkingAuth || accountRole === 'lawyer' || accountRole === 'firm') return
+    const requestId = requestRef.current + 1
+    requestRef.current = requestId
+    setListLoading(true)
+    fetchPage(0).then(function (result: { data: any }) {
+      if (requestRef.current !== requestId) return
+      applyPage(result, false)
+      setListLoading(false)
+    })
+  }, [checkingAuth, accountRole, viewMode, intl, selectedCountry, selectedLanguage, selectedSpecialty, selectedCity, onlyAvailable, debouncedSearch])
+
+  // section totals and filter choices
+  useEffect(function () {
+    if (checkingAuth || accountRole === 'lawyer' || accountRole === 'firm') return
+    supabase.rpc('directory_meta', { p_intl: intl }).then(function (result: { data: any }) {
+      setMeta((result.data as DirectoryMeta) || EMPTY_META)
+    })
+  }, [checkingAuth, accountRole, intl])
+
+  async function loadMore() {
+    const requestId = requestRef.current
+    setLoadingMore(true)
+    const result = await fetchPage(viewMode === 'individuals' ? lawyers.length : firms.length)
+    if (requestRef.current === requestId) applyPage(result, true)
+    setLoadingMore(false)
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -209,18 +283,14 @@ export default function LawyersPage() {
     return [l.city]
   }
 
-  function getFirmRatingInfo(firmId: number) {
-    const firmReviews = reviews.filter(function (r) { return r.firm_id === firmId })
-    if (firmReviews.length === 0) return null
-    const avg = firmReviews.reduce(function (sum, r) { return sum + r.rating }, 0) / firmReviews.length
-    return { avg: avg.toFixed(1), count: firmReviews.length }
+  function getFirmRatingInfo(f: Firm) {
+    if (!f.rating_count) return null
+    return { avg: Number(f.rating_avg || 0).toFixed(1), count: f.rating_count }
   }
 
-  function getRatingInfo(lawyerId: number) {
-    const lawyerReviews = reviews.filter(function (r) { return r.lawyer_id === lawyerId })
-    if (lawyerReviews.length === 0) return null
-    const avg = lawyerReviews.reduce(function (sum, r) { return sum + r.rating }, 0) / lawyerReviews.length
-    return { avg: avg.toFixed(1), value: avg, count: lawyerReviews.length }
+  function getRatingInfo(l: Lawyer) {
+    if (!l.rating_count) return null
+    return { avg: Number(l.rating_avg || 0).toFixed(1), value: Number(l.rating_avg || 0), count: l.rating_count }
   }
 
   function clearFilters() {
@@ -232,67 +302,19 @@ export default function LawyersPage() {
     setSelectedLanguage('')
   }
 
-  function inSection(country: string | null) {
-    return intl ? isInternational(country) : !isInternational(country)
-  }
-
-  function speaks(languages: string[] | null, code: string) {
-    return (languages && languages.length > 0 ? languages : ['ar']).indexOf(code) !== -1
-  }
-
-  const sectionLawyers = lawyers.filter(function (l) { return inSection(l.country) })
-  const sectionFirms = firms.filter(function (f) { return inSection(f.country) })
-  const intlCount = lawyers.filter(function (l) { return isInternational(l.country) }).length + firms.filter(function (f) { return isInternational(f.country) }).length
-
-  // only countries and languages we actually have in the international section
-  const availableCountries = Array.from(new Set(
-    lawyers.map(function (l) { return l.country || 'JO' }).concat(firms.map(function (f) { return f.country || 'JO' }))
-      .filter(function (c) { return isInternational(c) })
-  )).sort(function (a, b) { return countryName(a).localeCompare(countryName(b), 'ar') })
-  const availableLanguages = Array.from(new Set(
-    sectionLawyers.map(function (l) { return l.languages || ['ar'] }).concat(sectionFirms.map(function (f) { return f.languages || ['ar'] }))
-      .reduce(function (all, list) { return all.concat(list) }, [] as string[])
-  ))
+  const availableCountries = (meta.countries || []).slice().sort(function (a, b) { return countryName(a).localeCompare(countryName(b), 'ar') })
+  const availableLanguages = meta.languages || []
+  const intlCount = meta.intl_count || 0
 
   const lowerSearch = search.trim().toLowerCase()
   const hasActiveFilters = Boolean(lowerSearch || selectedCity || selectedCountry || selectedLanguage || (viewMode === 'individuals' && (selectedSpecialty || onlyAvailable)))
 
-  const filteredLawyers = sectionLawyers
-    .filter(function (l) {
-      if (selectedCountry && (l.country || 'JO') !== selectedCountry) return false
-      if (selectedLanguage && !speaks(l.languages, selectedLanguage)) return false
-      if (selectedSpecialty && getLawyerSpecialtyIds(l).indexOf(Number(selectedSpecialty)) === -1) return false
-      if (selectedCity && getLawyerCities(l).indexOf(selectedCity) === -1) return false
-      if (onlyAvailable && isOnVacation(l)) return false
-      if (!lowerSearch) return true
-      const haystack = [
-        l.full_name,
-        l.bio || '',
-        getLawyerSpecialtyIds(l).map(getSpecialtyName).join(' '),
-        getLawyerCities(l).join(' '),
-        intl ? countryName(l.country) : '',
-      ].join(' ').toLowerCase()
-      return haystack.indexOf(lowerSearch) !== -1
-    })
-    .sort(function (a, b) {
-      // Keeps the random order, only moving lawyers on vacation after available ones
-      const vacA = isOnVacation(a) ? 1 : 0
-      const vacB = isOnVacation(b) ? 1 : 0
-      return vacA - vacB
-    })
+  // already filtered and ordered by the database
+  const filteredLawyers = lawyers
+  const filteredFirms = firms
 
-  const filteredFirms = sectionFirms
-    .filter(function (f) {
-      if (selectedCountry && (f.country || 'JO') !== selectedCountry) return false
-      if (selectedLanguage && !speaks(f.languages, selectedLanguage)) return false
-      if (selectedCity && f.city !== selectedCity) return false
-      if (!lowerSearch) return true
-      const haystack = [f.firm_name, f.bio || '', f.city || '', intl ? countryName(f.country) : ''].join(' ').toLowerCase()
-      return haystack.indexOf(lowerSearch) !== -1
-    })
-
-  function getFirmLawyerCount(firmId: number) {
-    return lawyers.filter(function (l) { return l.firm_id === firmId }).length
+  function getFirmLawyerCount(f: Firm) {
+    return f.lawyer_count || 0
   }
 
   function renderLawyerAvatar(l: Lawyer, sizeClass: string, onVacation: boolean) {
@@ -324,7 +346,7 @@ export default function LawyersPage() {
   function renderLawyerCard(l: Lawyer) {
     const specialtyNames = getLawyerSpecialtyIds(l).map(getSpecialtyName).filter(Boolean).join('، ')
     const citiesText = getLawyerCities(l).filter(Boolean).join('، ')
-    const rating = getRatingInfo(l.id)
+    const rating = getRatingInfo(l)
     const onVacation = isOnVacation(l)
     const feeText = l.consultation_fee ? formatMoney(l.consultation_fee, currencyOf(l.country)) : 'غير محدد'
     const placeText = intl ? countryName(l.country) + (citiesText ? '، ' + citiesText : '') : citiesText
@@ -337,7 +359,7 @@ export default function LawyersPage() {
 
           <div className="flex-1 min-w-0">
             <h3 dir="auto" className="font-['Tajawal'] font-bold text-[#1B1A17] truncate text-right">{l.full_name}</h3>
-            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">{specialtyNames || 'محامي'}</p>
+            <p className="font-['Tajawal'] text-sm text-[#AD8A4E] truncate">{specialtyNames || 'محامي'}{l.firm_name ? ' · ' + l.firm_name : ''}</p>
             <p className="font-['Tajawal'] text-xs text-[#4A473F] truncate md:hidden">🎓 {l.years_experience || 0} سنوات · 📍 {placeText}</p>
           </div>
 
@@ -383,6 +405,10 @@ export default function LawyersPage() {
           )}
         </div>
 
+        {l.firm_name && (
+          <p className="font-['Tajawal'] text-xs text-[#2F4538] mb-2 truncate">🏛 عضو في {l.firm_name}</p>
+        )}
+
         <p className="font-['Tajawal'] text-sm text-[#4A473F] leading-relaxed line-clamp-2 min-h-[2.8rem] mb-4">{l.bio}</p>
 
         <div className="flex flex-wrap gap-2 mb-4">
@@ -409,9 +435,9 @@ export default function LawyersPage() {
   }
 
   function renderFirmCard(f: Firm) {
-    const lawyerCount = getFirmLawyerCount(f.id)
+    const lawyerCount = getFirmLawyerCount(f)
     const yearsSince = f.founded_year ? new Date().getFullYear() - f.founded_year : null
-    const firmRating = getFirmRatingInfo(f.id)
+    const firmRating = getFirmRatingInfo(f)
 
     if (layout === 'list') {
       return (
@@ -500,7 +526,8 @@ export default function LawyersPage() {
     )
   }
 
-  const resultsCount = viewMode === 'individuals' ? filteredLawyers.length : filteredFirms.length
+  const resultsCount = viewMode === 'individuals' ? lawyersTotal : firmsTotal
+  const hasMore = viewMode === 'individuals' ? lawyers.length < lawyersTotal : firms.length < firmsTotal
   const gridClass = layout === 'cards' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch' : ''
 
   return (
@@ -511,14 +538,17 @@ export default function LawyersPage() {
           <div className="flex justify-between items-center mb-8 font-['Tajawal'] text-sm">
             <a href="/"><img src="/logo.png" alt="حمورابي" className="h-12 w-auto" /></a>
             <div className="flex gap-5 items-center">
-              <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>
-              <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>
+              {loggedIn && <a href="/my-appointments" className="hover:text-[#AD8A4E] transition">مواعيدي</a>}
+              {loggedIn && <a href="/my-consultations" className="hover:text-[#AD8A4E] transition">استشاراتي</a>}
               <a href="/lawyers" className="text-[#AD8A4E]">دليل المحامين</a>
               <a href="/ai-assistant" className="hover:text-[#AD8A4E] transition">مساعد ذكي</a>
               <a href="/legal-articles" className="hover:text-[#AD8A4E] transition">مقالات قانونية</a>
 
               {!loggedIn && (
                 <a href="/login" className="hover:text-[#AD8A4E] transition">تسجيل الدخول</a>
+              )}
+              {!loggedIn && (
+                <a href="/signup?type=customer" className="px-4 py-2 bg-[#AD8A4E] text-white rounded-md hover:bg-[#c49b58] transition">إنشاء حساب</a>
               )}
 
               {loggedIn && (
@@ -540,13 +570,17 @@ export default function LawyersPage() {
           </div>
           <h1 className="font-['Tajawal'] font-bold text-4xl mb-3">{intl ? 'دليل المحامين الدولي' : 'دليل المحامين'}</h1>
           <p className="font-['Tajawal'] text-sm text-[#D8D2C4]">{intl ? 'محامون ومكاتب خارج الأردن، حسب الدولة واللغة' : 'ابحث عن محامي موثوق حسب الاختصاص والمدينة'}</p>
+          {!loggedIn && !checkingAuth && (
+            <p className="font-['Tajawal'] text-sm text-[#F3EEE4] mt-4 bg-white/10 border border-white/20 rounded-md px-4 py-2 inline-block">
+              تصفّح المحامين بحرية، ولحجز موعد أو إرسال استشارة <a href="/signup?type=customer" className="text-[#AD8A4E] underline">أنشئ حساباً مجانياً</a> أو <a href="/login" className="text-[#AD8A4E] underline">سجّل الدخول</a>.
+            </p>
+          )}
 
           {!loading && (
             <div className="flex flex-wrap gap-3 mt-5">
-              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{sectionLawyers.length} محامي</span>
-              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{sectionFirms.length} مكتب محاماة</span>
+              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{meta.lawyers} محامي</span>
+              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{meta.firms} مكتب محاماة</span>
               {intl && <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{availableCountries.length} دولة</span>}
-              <span className="px-4 py-1.5 rounded-full bg-white/10 border border-white/20 font-['Tajawal'] text-xs">{specialties.length} اختصاصاً</span>
             </div>
           )}
         </div>
@@ -556,10 +590,10 @@ export default function LawyersPage() {
         <div className="flex flex-wrap justify-between items-center gap-3 mb-5">
           <div className="flex bg-white border border-[#D8D2C4] rounded-md p-1 w-fit">
             <button onClick={function () { setViewMode('individuals') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'individuals' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
-              محامون أفراد{!loading ? ' (' + sectionLawyers.length + ')' : ''}
+              محامون أفراد{!loading ? ' (' + meta.lawyers + ')' : ''}
             </button>
             <button onClick={function () { setViewMode('firms') }} className={"px-5 py-2 rounded font-['Tajawal'] text-sm font-medium transition " + (viewMode === 'firms' ? 'bg-[#1B1A17] text-[#F3EEE4]' : 'text-[#4A473F]')}>
-              مكاتب محاماة{!loading ? ' (' + sectionFirms.length + ')' : ''}
+              مكاتب محاماة{!loading ? ' (' + meta.firms + ')' : ''}
             </button>
           </div>
 
@@ -664,7 +698,7 @@ export default function LawyersPage() {
           </p>
         )}
 
-        {loading && (
+        {(loading || listLoading) && (
           <div className={layout === 'cards' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5' : ''}>
             {[1, 2, 3, 4, 5, 6].map(function (i) {
               return <div key={i} className={(layout === 'cards' ? 'h-72' : 'h-20 mb-3') + ' bg-white border border-[#D8D2C4] rounded-2xl animate-pulse'}></div>
@@ -672,21 +706,29 @@ export default function LawyersPage() {
           </div>
         )}
 
-        {!loading && viewMode === 'individuals' && (
+        {!loading && !listLoading && viewMode === 'individuals' && (
           <div>
-            {filteredLawyers.length === 0 && renderEmpty(intl && sectionLawyers.length === 0 ? 'لا يوجد محامون خارج الأردن بعد' : 'لا يوجد محامون مطابقون')}
+            {filteredLawyers.length === 0 && renderEmpty(intl && meta.lawyers === 0 ? 'لا يوجد محامون خارج الأردن بعد' : 'لا يوجد محامون مطابقون')}
             <div className={gridClass}>
               {filteredLawyers.map(renderLawyerCard)}
             </div>
           </div>
         )}
 
-        {!loading && viewMode === 'firms' && (
+        {!loading && !listLoading && viewMode === 'firms' && (
           <div>
-            {filteredFirms.length === 0 && renderEmpty(sectionFirms.length === 0 ? (intl ? 'لا توجد مكاتب خارج الأردن بعد' : 'لا يوجد مكاتب محاماة مسجلة حالياً') : 'لا توجد مكاتب مطابقة')}
+            {filteredFirms.length === 0 && renderEmpty(meta.firms === 0 ? (intl ? 'لا توجد مكاتب خارج الأردن بعد' : 'لا يوجد مكاتب محاماة مسجلة حالياً') : 'لا توجد مكاتب مطابقة')}
             <div className={gridClass}>
               {filteredFirms.map(renderFirmCard)}
             </div>
+          </div>
+        )}
+
+        {!loading && !listLoading && hasMore && (
+          <div className="text-center mt-8">
+            <button onClick={loadMore} disabled={loadingMore} className="px-6 py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] text-sm hover:bg-[#AD8A4E] transition disabled:opacity-60">
+              {loadingMore ? 'جاري التحميل...' : 'عرض المزيد'}
+            </button>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
 import Loader from '../components/Loader'
@@ -38,11 +39,11 @@ function CheckoutContent() {
       const user = userResult.data.user
 
       if (user) {
-        const lawyerResult = await supabase.from('lawyers').select('id').eq('user_id', user.id).maybeSingle()
+        const lawyerResult = await myLawyer(supabase).select('id').eq('user_id', user.id).maybeSingle()
         if (lawyerResult.data) {
           setIsLawyerAccount(true)
         } else {
-          const firmResult = await supabase.from('firms').select('id').eq('user_id', user.id).maybeSingle()
+          const firmResult = await myFirm(supabase).select('id').eq('user_id', user.id).maybeSingle()
           if (firmResult.data) {
             setIsFirmAccount(true)
           }
@@ -133,26 +134,6 @@ function CheckoutContent() {
         setError('تعذر تفعيل الحساب الخاص، حاول مرة أخرى')
         return
       }
-    }
-
-    if (type === 'featured') {
-      const today = new Date()
-      const featuredUntilDate = new Date(today)
-      featuredUntilDate.setMonth(featuredUntilDate.getMonth() + 1)
-      const featuredUntilStr = featuredUntilDate.toISOString().split('T')[0]
-      const tableName = accountType === 'lawyer' ? 'lawyers' : 'firms'
-
-      await supabase
-        .from(tableName)
-        .update({ is_featured: true, featured_until: featuredUntilStr })
-        .eq('id', accountId)
-
-      await supabase.from('payments').insert({
-        payment_type: 'featured_listing',
-        amount: amount,
-        related_id: accountId,
-        status: 'completed',
-      })
     }
 
     setProcessing(false)

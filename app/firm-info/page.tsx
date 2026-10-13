@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myFirm } from '../lib/me'
 import { getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import DeleteAccount from '../components/DeleteAccount'
@@ -49,8 +50,7 @@ export default function FirmInfoPage() {
         return
       }
 
-      const firmResult = await supabase
-        .from('firms')
+      const firmResult = await myFirm(supabase)
         .select('*')
         .eq('user_id', userResult.data.user.id)
         .single()
@@ -226,7 +226,7 @@ export default function FirmInfoPage() {
           </div>
         </div>
 
-        <a href="/firm-dashboard" className="block w-full text-center py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition mb-4">
+        <a href="/firm-dashboard?edit=1" className="block w-full text-center py-3 bg-[#1B1A17] text-[#F3EEE4] rounded-md font-['Tajawal'] font-medium hover:bg-[#AD8A4E] transition mb-4">
           تعديل المعلومات
         </a>
 

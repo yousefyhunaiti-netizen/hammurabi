@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../lib/supabase'
+import { myLawyer, myFirm } from '../lib/me'
+import { fetchAll } from '../lib/fetchAll'
 import { getLawyerBadgeCount, getFirmBadgeCount } from '../lib/badges'
 import Footer from '../components/Footer'
 import HeaderLines from '../components/HeaderLines'
@@ -68,7 +70,7 @@ export default function LawyerArticlesPage() {
 
   async function loadArticles(type: 'lawyer' | 'firm', id: number) {
     const column = type === 'firm' ? 'firm_id' : 'lawyer_id'
-    const result = await supabase.from('legal_articles').select('*').eq(column, id).order('created_at', { ascending: false })
+    const result = await fetchAll(function (from, to) { return supabase.from('legal_articles').select('*').eq(column, id).order('created_at', { ascending: false }).order('id').range(from, to) })
     setArticles(result.data || [])
   }
 
@@ -87,7 +89,7 @@ export default function LawyerArticlesPage() {
       const specialtiesResult = await supabase.from('specialties').select('*')
       setSpecialties(specialtiesResult.data || [])
 
-      const lawyerResult = await supabase.from('lawyers').select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
+      const lawyerResult = await myLawyer(supabase).select('id, is_active, is_comped').eq('user_id', userId).maybeSingle()
 
       if (lawyerResult.data) {
         if (!lawyerResult.data.is_active && !lawyerResult.data.is_comped) {
@@ -109,7 +111,7 @@ export default function LawyerArticlesPage() {
         return
       }
 
-      const firmResult = await supabase.from('firms').select('*').eq('user_id', userId).maybeSingle()
+      const firmResult = await myFirm(supabase).select('*').eq('user_id', userId).maybeSingle()
 
       if (!firmResult.data) {
         setNotAllowed(true)
